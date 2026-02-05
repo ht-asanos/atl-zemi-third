@@ -17,6 +17,96 @@ It defines the conventions, workflows, and constraints of this project.
 - **Build:** `npm run build`
 - **Lint/Fix:** `npm run lint:fix`
 
+## 🐍 Python Toolchain (Pythonプロジェクト向け)
+Pythonを扱う場合は、以下のツールと使い方を標準として揃えてください。
+
+### 目的
+- 依存関係・実行方法・Lint/Format・型チェックの前提を統一し、環境差分による事故を減らす
+- 設定は原則 `pyproject.toml` に集約する
+
+### ツール選定
+- **環境構築:** `uv` (パッケージ管理・仮想環境)
+- **Lint/Format:** `ruff` (高速リンター & フォーマッター)
+- **型チェック:** `ty` (高速型チェッカー)
+- **コミット前チェック:** `pre-commit` (自動静的解析)
+
+### 使い方
+- **初回セットアップ:** `uv sync`
+- **依存追加:** `uv add <package>` ( `uv pip install` は非推奨 )
+- **フォーマット:** `uv run ruff format .`
+- **lint:** `uv run ruff check .`
+- **lint + fix:** `uv run ruff check --fix .`
+- **型チェック:** `uv run ty check`
+- **pre-commit install:** `uv run pre-commit install`
+- **pre-commit 全実行:** `uv run pre-commit run --all-files`
+
+### `pyproject.toml` 例
+```toml
+[project]
+name = "my-project"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+dev-dependencies = [
+    "pre-commit>=4.0.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "UP",
+    "B",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ty]
+python-version = "3.11"
+```
+
+### `.pre-commit-config.yaml` 例
+```yaml
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.5
+    hooks:
+      - id: ruff-format
+      - id: ruff
+        args: ["--fix"]
+
+  - repo: local
+    hooks:
+      - id: ty-check
+        name: ty check
+        entry: ty check
+        language: system
+        pass_filenames: false
+```
+
 ## 🧪 Testing Instructions
 エージェントはコード変更後、以下の手順で整合性を確認してください。
 
