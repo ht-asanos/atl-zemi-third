@@ -1,14 +1,14 @@
 import React from 'react';
+import { Card } from './ui/Card';
 
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
-// Let's stick to standard colors: Hearts/Diamonds Red, Spades/Clubs Black.
-// But usually 4-color deck is preferred in online poker: Spades=Black, Hearts=Red, Clubs=Green, Diamonds=Blue.
-const SUITS_4COLOR = [
-  { char: 's', label: '♠', color: 'text-black' },
-  { char: 'h', label: '♥', color: 'text-red-600' },
-  { char: 'd', label: '♦', color: 'text-blue-600' },
-  { char: 'c', label: '♣', color: 'text-green-600' }
-];
+
+const SUITS_INFO = [
+  { char: 's', label: 'Spades', color: 'text-black', displayColor: 'Black' },
+  { char: 'h', label: 'Hearts', color: 'text-red-600', displayColor: 'Red' },
+  { char: 'd', label: 'Diamonds', color: 'text-blue-600', displayColor: 'Blue' },
+  { char: 'c', label: 'Clubs', color: 'text-green-600', displayColor: 'Green' }
+] as const;
 
 interface CardSelectorProps {
   selectedCards: string[];
@@ -17,32 +17,45 @@ interface CardSelectorProps {
 
 export const CardSelector: React.FC<CardSelectorProps> = ({ selectedCards, onToggle }) => {
   return (
-    <div className="p-4 bg-white rounded-lg shadow">
-      <h2 className="text-lg font-bold mb-4">Select Your Hand (2 Cards)</h2>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {SUITS_4COLOR.map((suit) => (
+    <div className="p-6 bg-white rounded-xl shadow-xl border border-slate-200">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+        <h2 className="text-xl font-bold text-slate-800">Select Your Hand</h2>
+        <span className="text-sm font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
+          {selectedCards.length}/2 Cards Selected
+        </span>
+      </div>
+      
+      <div className="space-y-6">
+        {SUITS_INFO.map((suit) => (
           <div key={suit.char} className="flex flex-col gap-2">
-            <div className={`font-bold text-xl text-center ${suit.color}`}>{suit.label}</div>
-            <div className="grid grid-cols-4 gap-2">
+            {/* Suit Header / Legend */}
+            <div className={`flex items-center gap-2 font-bold text-sm uppercase tracking-wider ${suit.color} border-b border-slate-100 pb-1`}>
+              <span className="text-lg">{
+                suit.char === 's' ? '♠' : 
+                suit.char === 'h' ? '♥' : 
+                suit.char === 'd' ? '♦' : '♣'
+              }</span>
+              <span>{suit.label}</span>
+              <span className="text-xs opacity-60 font-normal normal-case ml-auto">({suit.displayColor})</span>
+            </div>
+
+            {/* Cards Grid */}
+            <div className="flex flex-wrap gap-2 sm:gap-3 justify-start">
               {RANKS.map((rank) => {
                 const cardStr = `${rank}${suit.char}`;
                 const isSelected = selectedCards.includes(cardStr);
                 const isDisabled = !isSelected && selectedCards.length >= 2;
                 
                 return (
-                  <button
+                  <Card
                     key={cardStr}
+                    rank={rank}
+                    suit={suit.char as 's' | 'h' | 'd' | 'c'}
+                    isSelected={isSelected}
+                    isDisabled={isDisabled}
                     onClick={() => onToggle(cardStr)}
-                    disabled={isDisabled}
-                    className={`
-                      h-10 w-full rounded border font-mono font-bold
-                      ${suit.color}
-                      ${isSelected ? 'bg-yellow-200 ring-2 ring-yellow-400' : 'bg-gray-50 hover:bg-gray-100'}
-                      ${isDisabled ? 'opacity-30 cursor-not-allowed' : ''}
-                    `}
-                  >
-                    {rank}
-                  </button>
+                    size="md"
+                  />
                 );
               })}
             </div>
