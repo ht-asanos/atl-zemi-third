@@ -47,6 +47,7 @@ jobs:
           base_url = "${AZURE_OPENAI_BASE_URL}"
           env_key = "AZURE_OPENAI_API_KEY"
           wire_api = "responses"
+          query_params = { api-version = "2025-04-01-preview" }
           EOF
 
       - name: Generate PR diff
