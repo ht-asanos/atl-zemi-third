@@ -1,20 +1,28 @@
 [project]
-name = "backend"
+name = "bouldering-app-backend"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.128.1",
-    "treys>=0.1.8",
-    "uvicorn>=0.40.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.0.0",
+    "supabase>=2.0.0",
+    "pyjwt>=2.8.0",
+    "openai>=1.0.0",
+    "httpx>=0.27.0",
+    "beautifulsoup4>=4.12.0",
+    "openpyxl>=3.1.0",
 ]
 
-[dependency-groups]
-dev = [
-    "mypy>=1.19.1",
-    "pre-commit>=4.5.1",
-    "ruff>=0.15.0",
+[tool.uv]
+dev-dependencies = [
+    "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=6.0.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.9.0",
+    "ty>=0.0.1a0",
 ]
 
 [tool.ruff]
@@ -30,9 +38,21 @@ select = [
     "B",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"src/app/dependencies/*.py" = ["B008"]
+"src/app/routers/*.py" = ["B008"]
+
 [tool.ruff.format]
 quote-style = "double"
 
-[tool.mypy]
-python_version = "3.11"
-strict = true
+[tool.ty.environment]
+python-version = "3.11"
+extra-paths = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+    "integration: DB integration tests (require supabase start)",
+]

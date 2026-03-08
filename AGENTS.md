@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This is a guide for AI coding agents (Claude Code, Cursor, Codex, etc.). 
+This is a guide for AI coding agents (Claude Code, Cursor, Codex, etc.).
 It defines the conventions, workflows, and constraints of this project.
 
 > [!CAUTION]

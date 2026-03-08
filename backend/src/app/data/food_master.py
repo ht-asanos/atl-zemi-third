@@ -1,0 +1,164 @@
+"""食材マスタデータ（単一ソース）
+
+このモジュールが食材データの唯一の定義元です。
+supabase/migrations/003_food_master_seed.sql はこの値と手動同期してください。
+Phase 2 で DB 読み込みに置換予定。
+"""
+
+from app.models.food import FoodCategory, FoodItem
+
+FOOD_MASTER: list[FoodItem] = [
+    # --- 主食 (staple) 5種 ---
+    FoodItem(
+        name="冷凍うどん",
+        category=FoodCategory.STAPLE,
+        kcal_per_serving=210,
+        protein_g=5.2,
+        fat_g=0.8,
+        carbs_g=44.0,
+        serving_unit="1玉(200g)",
+        price_yen=40,
+        cooking_minutes=3,
+    ),
+    FoodItem(
+        name="白米",
+        category=FoodCategory.STAPLE,
+        kcal_per_serving=252,
+        protein_g=3.8,
+        fat_g=0.5,
+        carbs_g=55.7,
+        serving_unit="1膳(150g)",
+        price_yen=50,
+        cooking_minutes=0,
+    ),
+    FoodItem(
+        name="オートミール",
+        category=FoodCategory.STAPLE,
+        kcal_per_serving=190,
+        protein_g=6.8,
+        fat_g=3.4,
+        carbs_g=32.2,
+        serving_unit="50g",
+        price_yen=60,
+        cooking_minutes=3,
+    ),
+    FoodItem(
+        name="パスタ",
+        category=FoodCategory.STAPLE,
+        kcal_per_serving=378,
+        protein_g=13.0,
+        fat_g=1.8,
+        carbs_g=73.0,
+        serving_unit="100g(乾麺)",
+        price_yen=40,
+        cooking_minutes=8,
+    ),
+    FoodItem(
+        name="食パン",
+        category=FoodCategory.STAPLE,
+        kcal_per_serving=158,
+        protein_g=5.6,
+        fat_g=2.6,
+        carbs_g=28.0,
+        serving_unit="6枚切り1枚",
+        price_yen=30,
+        cooking_minutes=2,
+    ),
+    # --- タンパク源 (protein) 4種 ---
+    FoodItem(
+        name="卵",
+        category=FoodCategory.PROTEIN,
+        kcal_per_serving=91,
+        protein_g=7.4,
+        fat_g=6.2,
+        carbs_g=0.2,
+        serving_unit="1個(60g)",
+        price_yen=25,
+        cooking_minutes=3,
+    ),
+    FoodItem(
+        name="ツナ缶",
+        category=FoodCategory.PROTEIN,
+        kcal_per_serving=71,
+        protein_g=16.0,
+        fat_g=0.7,
+        carbs_g=0.1,
+        serving_unit="1缶(70g)",
+        price_yen=120,
+        cooking_minutes=0,
+    ),
+    FoodItem(
+        name="サラダチキン",
+        category=FoodCategory.PROTEIN,
+        kcal_per_serving=113,
+        protein_g=23.8,
+        fat_g=1.5,
+        carbs_g=0.3,
+        serving_unit="1パック(100g)",
+        price_yen=200,
+        cooking_minutes=0,
+    ),
+    FoodItem(
+        name="豆腐",
+        category=FoodCategory.PROTEIN,
+        kcal_per_serving=72,
+        protein_g=7.0,
+        fat_g=4.2,
+        carbs_g=1.6,
+        serving_unit="1/2丁(150g)",
+        price_yen=50,
+        cooking_minutes=0,
+    ),
+    # --- かさ増し食材 (bulk) 3種 ---
+    FoodItem(
+        name="きのこミックス",
+        category=FoodCategory.BULK,
+        kcal_per_serving=18,
+        protein_g=2.7,
+        fat_g=0.2,
+        carbs_g=3.1,
+        serving_unit="100g",
+        price_yen=80,
+        cooking_minutes=2,
+    ),
+    FoodItem(
+        name="冷凍野菜ミックス",
+        category=FoodCategory.BULK,
+        kcal_per_serving=25,
+        protein_g=1.5,
+        fat_g=0.2,
+        carbs_g=4.8,
+        serving_unit="100g",
+        price_yen=60,
+        cooking_minutes=3,
+    ),
+    FoodItem(
+        name="乾燥わかめ",
+        category=FoodCategory.BULK,
+        kcal_per_serving=6,
+        protein_g=0.9,
+        fat_g=0.1,
+        carbs_g=0.8,
+        serving_unit="5g(戻し後30g)",
+        price_yen=20,
+        cooking_minutes=2,
+    ),
+]
+
+# 主食名 → レシピタグ（楽天 recipeCategoryName）のマッピング
+STAPLE_TAG_MAP: dict[str, list[str]] = {
+    "冷凍うどん": ["うどん", "焼きうどん", "煮込みうどん"],
+    "白米": ["ごはんもの", "丼", "丼物", "チャーハン", "カレー", "炊き込みご飯", "雑炊"],
+    "オートミール": ["オートミール", "雑炊", "リゾット", "おかゆ"],
+    "パスタ": ["パスタ", "スパゲティ"],
+    "食パン": ["トースト", "サンドイッチ", "パン", "フレンチトースト"],
+}
+
+# タイトル部分一致用のキーワード辞書（タグが空 or マッチしない場合のフォールバック）
+STAPLE_TITLE_KEYWORDS: dict[str, list[str]] = {
+    "冷凍うどん": ["うどん"],
+    "白米": ["丼", "ごはん", "ご飯", "チャーハン", "カレー", "炊き込み"],
+    "オートミール": ["オートミール", "雑炊", "リゾット"],
+    "パスタ": ["パスタ", "スパゲティ", "ペンネ", "マカロニ"],
+    "食パン": ["トースト", "サンドイッチ", "パン"],
+}

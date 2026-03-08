@@ -1,36 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Frontend — Next.js
 
-## Getting Started
-
-First, run the development server:
+## セットアップ
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local
+# .env.local を編集して Supabase / API 接続情報を設定
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 起動
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev      # 開発サーバー (http://localhost:3000)
+npm run build    # プロダクションビルド
+npm run start    # プロダクションサーバー
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## ページフロー
 
-## Learn More
+```
+Login → Setup → Staple → Plans
+  ↑                         │
+  └────── Logout ───────────┘
+```
 
-To learn more about Next.js, take a look at the following resources:
+1. **Login** (`/login`) — メール + パスワードでログイン
+2. **Signup** (`/signup`) — 新規アカウント作成
+3. **Setup** (`/setup`) — プロフィール + 目標設定
+4. **Staple** (`/staple`) — 主食選択 + 週間プラン生成
+5. **Plans** (`/plans`) — 週間メニュー表示（食事 + トレーニング）
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+未認証ユーザーは自動的に `/login` にリダイレクトされます。
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## コンポーネント構成
 
-## Deploy on Vercel
+```
+src/
+├── app/
+│   ├── layout.tsx              # AuthProvider + Toaster
+│   ├── page.tsx                # リダイレクト
+│   ├── (auth)/
+│   │   ├── login/page.tsx
+│   │   └── signup/page.tsx
+│   └── (app)/
+│       ├── layout.tsx          # 保護レイアウト + ナビ
+│       ├── setup/page.tsx
+│       ├── staple/page.tsx
+│       └── plans/page.tsx
+├── components/
+│   ├── ui/                     # UI コンポーネント (shadcn 互換)
+│   ├── auth/                   # ログイン / サインアップフォーム
+│   ├── setup/                  # プロフィール / 目標設定
+│   ├── staple/                 # 主食カード
+│   └── plans/                  # 週間プラン表示
+├── lib/
+│   ├── supabase/               # Supabase クライアント
+│   └── api/                    # Backend API クライアント
+├── types/                      # TypeScript 型定義
+├── providers/                  # AuthProvider
+└── middleware.ts               # 認証ミドルウェア
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Lint
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+```
