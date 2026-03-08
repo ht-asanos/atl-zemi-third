@@ -2,8 +2,15 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
-from app.services.rakuten_recipe import _parse_minutes, parse_ranking_recipes
+import pytest
+from app.services.rakuten_recipe import (
+    _parse_minutes,
+    fetch_category_list,
+    fetch_category_ranking,
+    parse_ranking_recipes,
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -50,3 +57,48 @@ class TestParseRankingRecipes:
         assert r["rakuten_recipe_id"] == 2345678
         assert r["cooking_minutes"] == 10
         assert r["servings"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_category_list_uses_access_key_in_query_param():
+    captured: dict = {}
+
+    class DummyClient:
+        async def get(self, url, params=None, headers=None):
+            captured["url"] = url
+            captured["params"] = params
+            captured["headers"] = headers
+            return SimpleNamespace(
+                raise_for_status=lambda: None,
+                json=lambda: {"result": {"large": [{"categoryId": "30"}], "medium": [], "small": []}},
+            )
+
+    rows = await fetch_category_list(DummyClient(), "app_id_123", "access_key_456")
+
+    assert len(rows) == 1
+    assert captured["params"]["applicationId"] == "app_id_123"
+    assert captured["params"]["accessKey"] == "access_key_456"
+    assert captured["headers"] is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_category_ranking_uses_access_key_in_query_param():
+    captured: dict = {}
+
+    class DummyClient:
+        async def get(self, url, params=None, headers=None):
+            captured["url"] = url
+            captured["params"] = params
+            captured["headers"] = headers
+            return SimpleNamespace(
+                raise_for_status=lambda: None,
+                json=lambda: {"result": [{"recipeId": 1}]},
+            )
+
+    rows = await fetch_category_ranking(DummyClient(), "app_id_123", "access_key_456", "10-275")
+
+    assert len(rows) == 1
+    assert captured["params"]["applicationId"] == "app_id_123"
+    assert captured["params"]["accessKey"] == "access_key_456"
+    assert captured["params"]["categoryId"] == "10-275"
+    assert captured["headers"] is None

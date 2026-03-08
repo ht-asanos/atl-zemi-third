@@ -15,9 +15,8 @@ REQUEST_INTERVAL = 1.0
 async def fetch_category_list(client: httpx.AsyncClient, app_id: str, access_key: str) -> list[dict]:
     """楽天レシピのカテゴリ一覧を取得する。"""
     url = f"{RAKUTEN_API_BASE}/CategoryList/20170426"
-    params = {"applicationId": app_id, "format": "json"}
-    headers = {"Authorization": f"Bearer {access_key}"}
-    resp = await client.get(url, params=params, headers=headers)
+    params = {"applicationId": app_id, "accessKey": access_key, "format": "json"}
+    resp = await client.get(url, params=params)
     resp.raise_for_status()
     data = resp.json()
     result = data.get("result", {})
@@ -32,9 +31,13 @@ async def fetch_category_ranking(
 ) -> list[dict]:
     """カテゴリ別ランキングレシピを取得する。"""
     url = f"{RAKUTEN_API_BASE}/CategoryRanking/20170426"
-    params = {"applicationId": app_id, "categoryId": category_id, "format": "json"}
-    headers = {"Authorization": f"Bearer {access_key}"}
-    resp = await client.get(url, params=params, headers=headers)
+    params = {
+        "applicationId": app_id,
+        "accessKey": access_key,
+        "categoryId": category_id,
+        "format": "json",
+    }
+    resp = await client.get(url, params=params)
     resp.raise_for_status()
     data = resp.json()
     return data.get("result", [])
