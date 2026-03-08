@@ -1,0 +1,43 @@
+{
+  "result": [
+    {
+      "recipeId": 1234567,
+      "recipeTitle": "簡単！鶏もも肉の照り焼き",
+      "recipeDescription": "フライパンひとつで作れる簡単照り焼きです。",
+      "foodImageUrl": "https://image.example.com/photo1.jpg",
+      "mediumImageUrl": "https://image.example.com/photo1_m.jpg",
+      "recipeUrl": "https://recipe.rakuten.co.jp/recipe/1234567/",
+      "recipeCategoryId": "14-131",
+      "recipeCategoryName": "鶏肉",
+      "recipeYield": 2,
+      "recipeCost": "300円前後",
+      "recipeIndication": "約30分",
+      "recipeMaterial": [
+        "鶏もも肉 300g",
+        "醤油 大さじ2",
+        "みりん 大さじ2",
+        "砂糖 大さじ1",
+        "サラダ油 小さじ1"
+      ]
+    },
+    {
+      "recipeId": 2345678,
+      "recipeTitle": "豆腐と卵のふわふわ丼",
+      "recipeDescription": "ヘルシーで簡単な豆腐丼です。",
+      "foodImageUrl": "https://image.example.com/photo2.jpg",
+      "recipeUrl": "https://recipe.rakuten.co.jp/recipe/2345678/",
+      "recipeCategoryId": "30-300",
+      "recipeCategoryName": "ご飯もの",
+      "recipeYield": 1,
+      "recipeCost": "100円以下",
+      "recipeIndication": "約10分",
+      "recipeMaterial": [
+        "豆腐 1丁",
+        "卵 2個",
+        "ご飯 1杯",
+        "醤油 大さじ1",
+        "だし汁 100ml"
+      ]
+    }
+  ]
+}

@@ -1,83 +1,48 @@
-import React from 'react';
+import * as React from 'react'
+import { cn } from '@/lib/utils'
 
-export interface CardProps {
-  rank: string;
-  suit: 's' | 'h' | 'd' | 'c';
-  isSelected?: boolean;
-  isDisabled?: boolean;
-  onClick?: () => void;
-  size?: 'sm' | 'md' | 'lg';
-}
+const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div
+      ref={ref}
+      className={cn('rounded-lg border bg-card text-card-foreground shadow-sm', className)}
+      {...props}
+    />
+  )
+)
+Card.displayName = 'Card'
 
-const SUIT_CONFIG = {
-  s: { symbol: '♠', color: 'text-black', label: 'Spades' },
-  h: { symbol: '♥', color: 'text-red-600', label: 'Hearts' },
-  d: { symbol: '♦', color: 'text-blue-600', label: 'Diamonds' },
-  c: { symbol: '♣', color: 'text-green-600', label: 'Clubs' },
-};
+const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex flex-col space-y-1.5 p-6', className)} {...props} />
+  )
+)
+CardHeader.displayName = 'CardHeader'
 
-export const Card: React.FC<CardProps> = ({
-  rank,
-  suit,
-  isSelected = false,
-  isDisabled = false,
-  onClick,
-  size = 'md',
-}) => {
-  const config = SUIT_CONFIG[suit];
+const CardTitle = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLHeadingElement>>(
+  ({ className, ...props }, ref) => (
+    <h3 ref={ref} className={cn('text-2xl font-semibold leading-none tracking-tight', className)} {...props} />
+  )
+)
+CardTitle.displayName = 'CardTitle'
 
-  // Size definitions
-  const sizeClasses = {
-    sm: 'w-10 h-14 text-xs',
-    md: 'w-14 h-20 text-sm sm:w-16 sm:h-24 sm:text-base', // Responsive: larger on sm+ screens
-    lg: 'w-20 h-28 text-lg',
-  };
+const CardDescription = React.forwardRef<HTMLParagraphElement, React.HTMLAttributes<HTMLParagraphElement>>(
+  ({ className, ...props }, ref) => (
+    <p ref={ref} className={cn('text-sm text-muted-foreground', className)} {...props} />
+  )
+)
+CardDescription.displayName = 'CardDescription'
 
-  const baseClasses = `
-    relative flex flex-col justify-between p-1 rounded-lg border shadow-sm
-    select-none transition-all duration-200
-    bg-white
-    font-mono font-bold
-  `;
+const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => <div ref={ref} className={cn('p-6 pt-0', className)} {...props} />
+)
+CardContent.displayName = 'CardContent'
 
-  const stateClasses = isDisabled
-    ? 'opacity-40 cursor-not-allowed bg-gray-100'
-    : isSelected
-      ? 'ring-2 ring-yellow-400 -translate-y-1 shadow-md cursor-pointer'
-      : 'hover:-translate-y-0.5 hover:shadow-md cursor-pointer border-gray-200';
+const CardFooter = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, ...props }, ref) => (
+    <div ref={ref} className={cn('flex items-center p-6 pt-0', className)} {...props} />
+  )
+)
+CardFooter.displayName = 'CardFooter'
 
-  return (
-    <button
-      type="button"
-      onClick={!isDisabled ? onClick : undefined}
-      disabled={isDisabled}
-      className={`
-        ${baseClasses}
-        ${sizeClasses[size]}
-        ${config.color}
-        ${stateClasses}
-        focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-      `}
-      aria-label={`${rank} of ${config.label}`}
-    >
-      {/* Top Left Rank/Suit */}
-      <div className="flex flex-col leading-none items-center">
-        <span>{rank}</span>
-        <span className="text-[0.8em]">{config.symbol}</span>
-      </div>
-
-      {/* Center Suit (Only visible on md/lg) */}
-      {size !== 'sm' && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20">
-          <span className="text-4xl">{config.symbol}</span>
-        </div>
-      )}
-
-      {/* Bottom Right Rank/Suit (Rotated) */}
-      <div className="flex flex-col leading-none items-center rotate-180">
-        <span>{rank}</span>
-        <span className="text-[0.8em]">{config.symbol}</span>
-      </div>
-    </button>
-  );
-};
+export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
