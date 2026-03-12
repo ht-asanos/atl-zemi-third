@@ -15,6 +15,7 @@ from app.schemas.plan import (
 )
 from app.services.meal_suggestion import _make_dinner_from_recipe, calc_dinner_budget, generate_daily_meals
 from app.services.shopping_list import generate_shopping_list
+from app.services.training_adaptation import build_next_week_training_adjustment
 from app.services.weekly_planner import generate_weekly_plan, generate_weekly_plan_v3
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from postgrest.exceptions import APIError
@@ -66,6 +67,7 @@ async def create_weekly_plan(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found. Create goal first.")
 
     pfc_budget = PFCBudget(protein_g=goal.protein_g, fat_g=goal.fat_g, carbs_g=goal.carbs_g)
+    training_adj = await build_next_week_training_adjustment(supabase, user_id, body.start_date, goal.goal_type)
 
     if body.mode == "recipe":
         fav_ids = await favorite_repo.get_favorite_recipe_ids(supabase, user_id)
@@ -84,6 +86,8 @@ async def create_weekly_plan(
             favorite_ids=fav_ids,
             staple_tags=staple_tags,
             staple_keywords=staple_keywords,
+            training_scale=training_adj.scale,
+            protect_forearms=training_adj.protect_forearms,
         )
     else:  # classic
         if not body.staple_name:
@@ -101,6 +105,8 @@ async def create_weekly_plan(
             goal_type=goal.goal_type,
             protein_foods=protein_foods,
             bulk_foods=bulk_foods,
+            training_scale=training_adj.scale,
+            protect_forearms=training_adj.protect_forearms,
         )
 
     plan_meta = {"mode": body.mode, "staple_name": body.staple_name}

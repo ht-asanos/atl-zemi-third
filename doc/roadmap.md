@@ -2,6 +2,8 @@
 
 本ロードマップはコードベースの実装状況を正確に反映し、今後の開発方針を示すものである。
 
+差分メモ（2026-03-12）: [roadmap_delta_2026-03-12.md](/Users/hdymacuser/WorkSpace/260401dtzemi/atl-zemi-third/doc/roadmap_delta_2026-03-12.md)
+
 ---
 
 ## 技術構成

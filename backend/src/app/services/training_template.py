@@ -177,35 +177,57 @@ def get_strength_template() -> TrainingTemplate:
 
 
 def get_bouldering_template() -> TrainingTemplate:
-    """bouldering: Pull+Grip / Core+Light Push の 2 日型。"""
+    """bouldering: 週4日（2登る + 2補強）向けの基本日テンプレート。"""
     return TrainingTemplate(
         goal="bouldering",
         days=[
             TrainingDay(
-                day_label="Pull + Grip",
+                day_label="Climb A (Technique + Endurance)",
                 exercises=[
                     Exercise(
-                        id="pull_up",
-                        name_ja="チンニング",
+                        id="scapular_pull_up",
+                        name_ja="スキャプラプルアップ",
                         muscle_group=G.BACK,
-                        sets=4,
-                        reps=8,
-                        rest_seconds=90,
+                        sets=3,
+                        reps=10,
+                        rest_seconds=75,
+                    ),
+                    Exercise(
+                        id="bodyweight_row",
+                        name_ja="自重ロウ",
+                        muscle_group=G.BACK,
+                        sets=3,
+                        reps=12,
+                        rest_seconds=75,
                     ),
                     Exercise(
                         id="dead_hang",
                         name_ja="デッドハング",
                         muscle_group=G.FOREARMS,
-                        sets=3,
-                        reps="30秒",
+                        sets=2,
+                        reps="20秒",
                         rest_seconds=90,
                     ),
                     Exercise(
-                        id="finger_curl",
-                        name_ja="フィンガーカール",
-                        muscle_group=G.FOREARMS,
+                        id="hollow_body_hold",
+                        name_ja="ホロウボディホールド",
+                        muscle_group=G.CORE,
                         sets=3,
-                        reps=15,
+                        reps="30秒",
+                        rest_seconds=60,
+                    ),
+                ],
+            ),
+            TrainingDay(
+                day_label="Support A (Pull + Core)",
+                exercises=[
+                    Exercise(
+                        id="pull_up",
+                        name_ja="チンニング",
+                        muscle_group=G.BACK,
+                        sets=3,
+                        reps=6,
+                        rest_seconds=90,
                     ),
                     Exercise(
                         id="dumbbell_row",
@@ -213,18 +235,15 @@ def get_bouldering_template() -> TrainingTemplate:
                         muscle_group=G.BACK,
                         sets=3,
                         reps=10,
+                        rest_seconds=75,
                     ),
-                ],
-            ),
-            TrainingDay(
-                day_label="Core + Light Push",
-                exercises=[
                     Exercise(
-                        id="hanging_leg_raise",
-                        name_ja="ハンギングレッグレイズ",
+                        id="hanging_knee_raise",
+                        name_ja="ハンギングニーレイズ",
                         muscle_group=G.CORE,
                         sets=3,
                         reps=12,
+                        rest_seconds=60,
                     ),
                     Exercise(
                         id="pallof_press",
@@ -232,20 +251,65 @@ def get_bouldering_template() -> TrainingTemplate:
                         muscle_group=G.CORE,
                         sets=3,
                         reps=10,
+                        rest_seconds=60,
+                    ),
+                ],
+            ),
+            TrainingDay(
+                day_label="Climb B (Power + Movement)",
+                exercises=[
+                    Exercise(
+                        id="pull_up",
+                        name_ja="チンニング",
+                        muscle_group=G.BACK,
+                        sets=4,
+                        reps=6,
+                        rest_seconds=90,
                     ),
                     Exercise(
-                        id="push_up",
-                        name_ja="プッシュアップ",
-                        muscle_group=G.CHEST,
+                        id="farmer_carry",
+                        name_ja="ファーマーズキャリー",
+                        muscle_group=G.FOREARMS,
                         sets=2,
-                        reps=12,
+                        reps="30秒",
+                        rest_seconds=90,
                     ),
+                    Exercise(
+                        id="hanging_leg_raise",
+                        name_ja="ハンギングレッグレイズ",
+                        muscle_group=G.CORE,
+                        sets=3,
+                        reps=10,
+                        rest_seconds=60,
+                    ),
+                ],
+            ),
+            TrainingDay(
+                day_label="Support B (Core + Lower + Push)",
+                exercises=[
                     Exercise(
                         id="goblet_squat",
                         name_ja="ゴブレットスクワット",
                         muscle_group=G.LEGS,
                         sets=3,
+                        reps=10,
+                        rest_seconds=75,
+                    ),
+                    Exercise(
+                        id="push_up",
+                        name_ja="プッシュアップ",
+                        muscle_group=G.CHEST,
+                        sets=3,
                         reps=12,
+                        rest_seconds=60,
+                    ),
+                    Exercise(
+                        id="side_plank",
+                        name_ja="サイドプランク",
+                        muscle_group=G.CORE,
+                        sets=3,
+                        reps="30秒",
+                        rest_seconds=45,
                     ),
                 ],
             ),

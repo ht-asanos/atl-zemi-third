@@ -83,6 +83,15 @@ class TestExtractItemNos:
         html = '<html><body><a href="/other">link</a></body></html>'
         assert _extract_item_nos(html) == []
 
+    def test_extracts_items_from_checkboxes(self):
+        html = """
+        <html><body>
+        <input type="checkbox" name="ITEM_NO" value="7_11_11212">
+        <input type="checkbox" name="ITEM_NO" value="7_11_11213">
+        </body></html>
+        """
+        assert _extract_item_nos(html) == ["7_11_11212", "7_11_11213"]
+
 
 class TestSearchFoodsByName:
     @pytest.mark.asyncio
@@ -93,7 +102,7 @@ class TestSearchFoodsByName:
         mock_response.status_code = 500
 
         mock_client = AsyncMock(spec=httpx.AsyncClient)
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
 
         result = await search_foods_by_name(mock_client, "鶏肉")
         assert result == []
@@ -107,7 +116,7 @@ class TestSearchFoodsByName:
         mock_response.text = "<html><body>No results</body></html>"
 
         mock_client = AsyncMock(spec=httpx.AsyncClient)
-        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=mock_response)
 
         result = await search_foods_by_name(mock_client, "存在しない食品")
         assert result == []
@@ -135,7 +144,8 @@ class TestSearchFoodsByName:
         detail_resp.status_code = 200
         detail_resp.text = detail_html
 
-        mock_client.get = AsyncMock(side_effect=[search_resp, detail_resp])
+        mock_client.post = AsyncMock(return_value=search_resp)
+        mock_client.get = AsyncMock(side_effect=[detail_resp])
 
         result = await search_foods_by_name(mock_client, "テスト", max_results=1)
         assert len(result) <= 1
@@ -145,7 +155,7 @@ class TestSearchFoodsByName:
         from app.services.mext_scraper import search_foods_by_name
 
         mock_client = AsyncMock(spec=httpx.AsyncClient)
-        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
+        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
 
         result = await search_foods_by_name(mock_client, "テスト")
         assert result == []

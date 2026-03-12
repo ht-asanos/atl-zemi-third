@@ -5,19 +5,23 @@ API リクエスト中には呼ばない。data_loader 経由のみ。
 """
 
 import asyncio
+import logging
 
 import httpx
 
 RAKUTEN_API_BASE = "https://openapi.rakuten.co.jp/recipems/api/Recipe"
-REQUEST_INTERVAL = 1.0
+REQUEST_INTERVAL = 2.0
+MAX_RETRIES_ON_429 = 3
+RETRY_BASE_SECONDS = 2.0
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_category_list(client: httpx.AsyncClient, app_id: str, access_key: str) -> list[dict]:
     """楽天レシピのカテゴリ一覧を取得する。"""
     url = f"{RAKUTEN_API_BASE}/CategoryList/20170426"
-    params = {"applicationId": app_id, "format": "json"}
-    headers = {"Authorization": f"Bearer {access_key}"}
-    resp = await client.get(url, params=params, headers=headers)
+    params = {"applicationId": app_id, "accessKey": access_key, "format": "json"}
+    resp = await client.get(url, params=params)
     resp.raise_for_status()
     data = resp.json()
     result = data.get("result", {})
@@ -32,9 +36,30 @@ async def fetch_category_ranking(
 ) -> list[dict]:
     """カテゴリ別ランキングレシピを取得する。"""
     url = f"{RAKUTEN_API_BASE}/CategoryRanking/20170426"
-    params = {"applicationId": app_id, "categoryId": category_id, "format": "json"}
-    headers = {"Authorization": f"Bearer {access_key}"}
-    resp = await client.get(url, params=params, headers=headers)
+    params = {
+        "applicationId": app_id,
+        "accessKey": access_key,
+        "categoryId": category_id,
+        "format": "json",
+    }
+    resp: httpx.Response | None = None
+    for attempt in range(MAX_RETRIES_ON_429 + 1):
+        resp = await client.get(url, params=params)
+        if resp.status_code != 429:
+            break
+
+        if attempt >= MAX_RETRIES_ON_429:
+            break
+
+        retry_after = resp.headers.get("Retry-After")
+        try:
+            wait_s = float(retry_after) if retry_after else RETRY_BASE_SECONDS * (attempt + 1)
+        except ValueError:
+            wait_s = RETRY_BASE_SECONDS * (attempt + 1)
+        logger.warning("Rakuten API rate-limited for category=%s, retry in %.1fs", category_id, wait_s)
+        await asyncio.sleep(wait_s)
+
+    assert resp is not None
     resp.raise_for_status()
     data = resp.json()
     return data.get("result", [])

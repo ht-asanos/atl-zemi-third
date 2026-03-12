@@ -12,6 +12,10 @@ class RecipeIngredient(BaseModel):
     mext_food_id: UUID | None = None
     match_confidence: float | None = None
     manual_review_needed: bool = False
+    kcal: float | None = None
+    protein_g: float | None = None
+    fat_g: float | None = None
+    carbs_g: float | None = None
 
 
 class Recipe(BaseModel):

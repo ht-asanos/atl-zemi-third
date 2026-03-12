@@ -4,6 +4,7 @@ from app.services.ingredient_matcher import (
     CONFIDENCE_AUTO_MATCH,
     CONFIDENCE_MANUAL_REVIEW,
     _convert_to_grams,
+    estimate_amount_g,
     parse_ingredient_text,
 )
 
@@ -85,3 +86,16 @@ class TestConfidenceThresholds:
 
     def test_auto_match_higher_than_manual(self):
         assert CONFIDENCE_AUTO_MATCH > CONFIDENCE_MANUAL_REVIEW
+
+
+class TestEstimateAmountG:
+    def test_seasoning_defaults_to_10g(self):
+        assert estimate_amount_g("塩") == 10.0
+        assert estimate_amount_g("しょうゆ") == 10.0
+
+    def test_oil_defaults_to_12g(self):
+        assert estimate_amount_g("ごま油") == 12.0
+        assert estimate_amount_g("オリーブオイル") == 12.0
+
+    def test_other_defaults_to_100g(self):
+        assert estimate_amount_g("鶏もも肉") == 100.0
