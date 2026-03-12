@@ -91,6 +91,7 @@ async def test_fetch_category_ranking_uses_access_key_in_query_param():
             captured["params"] = params
             captured["headers"] = headers
             return SimpleNamespace(
+                status_code=200,
                 raise_for_status=lambda: None,
                 json=lambda: {"result": [{"recipeId": 1}]},
             )

@@ -100,6 +100,23 @@ class TestGenerateWeeklyPlan:
         for plan in plans:
             assert len(plan.meals) == 3
 
+    def test_bouldering_has_rest_days_in_classic_generation(self) -> None:
+        plans = generate_weekly_plan(
+            start_date=date(2026, 3, 9),
+            pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
+            staple=_get_staple(),
+            goal_type="bouldering",
+            protein_foods=_get_proteins(),
+            bulk_foods=_get_bulks(),
+        )
+        assert plans[0].training_day is not None
+        assert plans[1].training_day is None
+        assert plans[2].training_day is not None
+        assert plans[3].training_day is None
+        assert plans[4].training_day is not None
+        assert plans[5].training_day is None
+        assert plans[6].training_day is not None
+
 
 class TestGenerateWeeklyPlanV3:
     def _make_mock_recipes(self, count: int = 7) -> list[Recipe]:
@@ -203,3 +220,44 @@ class TestGenerateWeeklyPlanV3:
             assert plans[i].meals[2].recipe is not None
         for i in range(3, 7):
             assert plans[i].meals[2].recipe is None
+
+    @pytest.mark.asyncio
+    async def test_bouldering_has_rest_days(self) -> None:
+        mock_recipes = self._make_mock_recipes(7)
+        with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
+            plans = await generate_weekly_plan_v3(
+                start_date=date(2026, 3, 9),
+                pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
+                goal_type="bouldering",
+                supabase=AsyncMock(),
+            )
+
+        assert plans[0].training_day is not None
+        assert plans[1].training_day is None
+        assert plans[2].training_day is not None
+        assert plans[3].training_day is None
+        assert plans[4].training_day is not None
+        assert plans[5].training_day is None
+        assert plans[6].training_day is not None
+
+    @pytest.mark.asyncio
+    async def test_bouldering_adjustment_scale_and_forearm_protection(self) -> None:
+        mock_recipes = self._make_mock_recipes(7)
+        with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
+            plans = await generate_weekly_plan_v3(
+                start_date=date(2026, 3, 9),
+                pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
+                goal_type="bouldering",
+                supabase=AsyncMock(),
+                training_scale=0.9,
+                protect_forearms=True,
+            )
+
+        training_days = [p.training_day for p in plans if p.training_day is not None]
+        assert training_days, "at least one training day should exist"
+        for day in training_days:
+            for ex in day.exercises:
+                assert ex.sets >= 1
+                assert ex.muscle_group.value != "forearms"

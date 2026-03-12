@@ -34,6 +34,7 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
 
   const recipeId = meal.recipe?.id
   const isFavorite = recipeId ? (favoriteRecipeIds?.has(recipeId) ?? false) : false
+  const recipeNutrition = meal.recipe?.nutrition_per_serving
 
   return (
     <div className="space-y-2">
@@ -75,6 +76,17 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
             >
               楽天レシピで見る →
             </a>
+            {recipeNutrition && (
+              <div className="rounded-md bg-muted/50 p-2">
+                <p className="text-xs font-medium text-muted-foreground">食材合算栄養 (1人前)</p>
+                <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                  <Badge variant="secondary">{Math.round(recipeNutrition.kcal)} kcal</Badge>
+                  <Badge variant="outline">P {recipeNutrition.protein_g.toFixed(1)}g</Badge>
+                  <Badge variant="outline">F {recipeNutrition.fat_g.toFixed(1)}g</Badge>
+                  <Badge variant="outline">C {recipeNutrition.carbs_g.toFixed(1)}g</Badge>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-sm">

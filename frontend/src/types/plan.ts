@@ -46,6 +46,12 @@ export interface RecipeInPlan {
   image_url?: string
   recipe_url: string
   cooking_minutes?: number | null
+  nutrition_per_serving?: {
+    kcal: number
+    protein_g: number
+    fat_g: number
+    carbs_g: number
+  } | null
 }
 
 export interface MealSuggestion {

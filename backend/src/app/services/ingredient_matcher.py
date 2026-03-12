@@ -7,6 +7,9 @@ import re
 from typing import Any
 from uuid import UUID
 
+from app.repositories import mext_food_repo
+from postgrest.exceptions import APIError
+
 from supabase import AsyncClient
 
 # 単位変換テーブル（食材名, 単位） → グラム
@@ -30,6 +33,29 @@ UNIT_CONVERSIONS: dict[tuple[str | None, str], float] = {
 # confidence 閾値
 CONFIDENCE_AUTO_MATCH = 0.6
 CONFIDENCE_MANUAL_REVIEW = 0.3
+DEFAULT_INGREDIENT_AMOUNT_G = 100.0
+
+# 楽天ランキングAPIは分量を持たないケースが多いため、最低限の推定グラムを使う。
+_LIGHT_INGREDIENT_KEYWORDS = (
+    "塩",
+    "こしょう",
+    "胡椒",
+    "しょうゆ",
+    "醤油",
+    "みそ",
+    "味噌",
+    "みりん",
+    "酢",
+    "砂糖",
+    "だし",
+    "コンソメ",
+    "鶏ガラ",
+    "顆粒",
+    "めんつゆ",
+    "ソース",
+    "ケチャップ",
+)
+_OIL_KEYWORDS = ("油", "オイル", "ごま油", "オリーブ")
 
 
 def parse_ingredient_text(text: str) -> tuple[str, float | None]:
@@ -74,6 +100,16 @@ def _convert_to_grams(name: str, amount: float, unit: str) -> float | None:
     return None
 
 
+def estimate_amount_g(ingredient_name: str) -> float:
+    """分量不明時の簡易推定グラムを返す。"""
+    name = ingredient_name.strip()
+    if any(keyword in name for keyword in _LIGHT_INGREDIENT_KEYWORDS):
+        return 10.0
+    if any(keyword in name for keyword in _OIL_KEYWORDS):
+        return 12.0
+    return DEFAULT_INGREDIENT_AMOUNT_G
+
+
 async def match_ingredient(
     supabase: AsyncClient,
     ingredient_name: str,
@@ -82,10 +118,22 @@ async def match_ingredient(
 
     trigram 類似度を使用してマッチングする。
     """
-    response = await supabase.rpc(
-        "similarity_search_mext_foods",
-        {"search_name": ingredient_name, "threshold": CONFIDENCE_MANUAL_REVIEW},
-    ).execute()
+    try:
+        response = await supabase.rpc(
+            "similarity_search_mext_foods",
+            {"search_name": ingredient_name, "threshold": CONFIDENCE_MANUAL_REVIEW},
+        ).execute()
+    except APIError as e:
+        # ローカル環境で RPC 未適用の場合のフォールバック
+        if "similarity_search_mext_foods" not in str(e):
+            raise
+        candidates = await mext_food_repo.search_by_name(supabase, ingredient_name, limit=5)
+        if not candidates:
+            return None, 0.0
+        best = candidates[0]
+        # シンプルな近似 confidence。厳しめに手動レビュー寄りに倒す。
+        confidence = 0.6 if ingredient_name in best.name else 0.4
+        return best.id, confidence
 
     rows: list[dict[str, Any]] = response.data or []
     if not rows:
@@ -149,17 +197,47 @@ async def calculate_recipe_nutrition(supabase: AsyncClient, recipe_id: UUID) -> 
         confidence = row.get("match_confidence") or 0.0
         amount_g = row.get("amount_g")
         mext = row.get("mext_foods")
+        ingredient_id = row.get("id")
 
-        if confidence < CONFIDENCE_AUTO_MATCH or not amount_g or not mext:
+        ingredient_kcal = None
+        ingredient_protein = None
+        ingredient_fat = None
+        ingredient_carbs = None
+
+        if mext:
+            effective_amount_g = amount_g if amount_g is not None else estimate_amount_g(row.get("ingredient_name", ""))
+            ratio = effective_amount_g / 100.0
+            ingredient_kcal = round(mext["kcal_per_100g"] * ratio, 1)
+            ingredient_protein = round(mext["protein_g_per_100g"] * ratio, 1)
+            ingredient_fat = round(mext["fat_g_per_100g"] * ratio, 1)
+            ingredient_carbs = round(mext["carbs_g_per_100g"] * ratio, 1)
+
+            # 各食材の栄養を recipe_ingredients に保持する
+            if ingredient_id:
+                await (
+                    supabase.table("recipe_ingredients")
+                    .update(
+                        {
+                            "amount_g": effective_amount_g,
+                            "kcal": ingredient_kcal,
+                            "protein_g": ingredient_protein,
+                            "fat_g": ingredient_fat,
+                            "carbs_g": ingredient_carbs,
+                        }
+                    )
+                    .eq("id", str(ingredient_id))
+                    .execute()
+                )
+
+        if confidence < CONFIDENCE_AUTO_MATCH or ingredient_kcal is None:
             all_matched = False
             continue
 
         has_valid = True
-        ratio = amount_g / 100.0
-        total_kcal += mext["kcal_per_100g"] * ratio
-        total_protein += mext["protein_g_per_100g"] * ratio
-        total_fat += mext["fat_g_per_100g"] * ratio
-        total_carbs += mext["carbs_g_per_100g"] * ratio
+        total_kcal += ingredient_kcal
+        total_protein += ingredient_protein or 0.0
+        total_fat += ingredient_fat or 0.0
+        total_carbs += ingredient_carbs or 0.0
 
     if not has_valid:
         return None

@@ -140,6 +140,12 @@ class TestMakeDinnerFromRecipe:
         assert meal.recipe is not None
         assert meal.recipe["title"] == "テスト鶏肉料理"
         assert meal.recipe["recipe_url"] == "https://example.com/recipe/1"
+        assert meal.recipe["nutrition_per_serving"] == {
+            "kcal": 350,
+            "protein_g": 25.0,
+            "fat_g": 10.0,
+            "carbs_g": 30.0,
+        }
 
     def test_staple_name_is_recipe_title(self) -> None:
         recipe = self._make_recipe()

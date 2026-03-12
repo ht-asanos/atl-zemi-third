@@ -5,11 +5,16 @@ API リクエスト中には呼ばない。data_loader 経由のみ。
 """
 
 import asyncio
+import logging
 
 import httpx
 
 RAKUTEN_API_BASE = "https://openapi.rakuten.co.jp/recipems/api/Recipe"
-REQUEST_INTERVAL = 1.0
+REQUEST_INTERVAL = 2.0
+MAX_RETRIES_ON_429 = 3
+RETRY_BASE_SECONDS = 2.0
+
+logger = logging.getLogger(__name__)
 
 
 async def fetch_category_list(client: httpx.AsyncClient, app_id: str, access_key: str) -> list[dict]:
@@ -37,7 +42,24 @@ async def fetch_category_ranking(
         "categoryId": category_id,
         "format": "json",
     }
-    resp = await client.get(url, params=params)
+    resp: httpx.Response | None = None
+    for attempt in range(MAX_RETRIES_ON_429 + 1):
+        resp = await client.get(url, params=params)
+        if resp.status_code != 429:
+            break
+
+        if attempt >= MAX_RETRIES_ON_429:
+            break
+
+        retry_after = resp.headers.get("Retry-After")
+        try:
+            wait_s = float(retry_after) if retry_after else RETRY_BASE_SECONDS * (attempt + 1)
+        except ValueError:
+            wait_s = RETRY_BASE_SECONDS * (attempt + 1)
+        logger.warning("Rakuten API rate-limited for category=%s, retry in %.1fs", category_id, wait_s)
+        await asyncio.sleep(wait_s)
+
+    assert resp is not None
     resp.raise_for_status()
     data = resp.json()
     return data.get("result", [])

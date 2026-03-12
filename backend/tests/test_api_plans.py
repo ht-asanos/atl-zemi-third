@@ -65,6 +65,7 @@ class TestCreateWeeklyPlanClassic:
             patch("app.routers.plans.goal_repo") as mock_goal,
             patch("app.routers.plans.food_repo") as mock_food,
             patch("app.routers.plans.plan_repo") as mock_plan,
+            patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
         ):
             mock_goal.get_latest_goal = AsyncMock(return_value=MOCK_GOAL)
             mock_food.get_food_by_name = AsyncMock(return_value=STAPLE_FOODS[0])
@@ -72,6 +73,7 @@ class TestCreateWeeklyPlanClassic:
             mock_food.get_bulk_foods = AsyncMock(return_value=BULK_FOODS)
             mock_plan.upsert_weekly_plans = AsyncMock(return_value=None)
             mock_plan.get_weekly_plans = AsyncMock(return_value=_make_daily_plans_response())
+            mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
 
             resp = test_client.post(
                 "/plans/weekly",
@@ -89,6 +91,7 @@ class TestCreateWeeklyPlanClassic:
         assert all(isinstance(p, dict) for p in call_plans)
         # plan_meta が含まれること
         assert call_plans[0]["plan_meta"] == {"mode": "classic", "staple_name": "冷凍うどん"}
+        mock_training_adj.assert_called_once()
 
     def test_goal_not_found(self, client) -> None:
         test_client, _ = client
@@ -173,11 +176,13 @@ class TestCreateWeeklyPlanRecipe:
             patch("app.routers.plans.plan_repo") as mock_plan,
             patch("app.routers.plans.generate_weekly_plan_v3") as mock_v3,
             patch("app.routers.plans.favorite_repo") as mock_fav,
+            patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
         ):
             mock_goal.get_latest_goal = AsyncMock(return_value=MOCK_GOAL)
             mock_plan.upsert_weekly_plans = AsyncMock(return_value=None)
             mock_plan.get_weekly_plans = AsyncMock(return_value=_make_daily_plans_response())
             mock_fav.get_favorite_recipe_ids = AsyncMock(return_value=set())
+            mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
 
             # generate_weekly_plan_v3 をモック（実際の DB アクセスを回避）
             from datetime import timedelta
@@ -201,6 +206,10 @@ class TestCreateWeeklyPlanRecipe:
             )
         assert resp.status_code == 201
         assert len(resp.json()["plans"]) == 7
+        mock_training_adj.assert_called_once()
+        _, kwargs = mock_v3.call_args
+        assert kwargs["training_scale"] == 1.0
+        assert kwargs["protect_forearms"] is False
 
     def test_default_mode_is_recipe(self, client) -> None:
         """mode 未指定時のデフォルトは recipe"""
@@ -210,11 +219,13 @@ class TestCreateWeeklyPlanRecipe:
             patch("app.routers.plans.plan_repo") as mock_plan,
             patch("app.routers.plans.generate_weekly_plan_v3") as mock_v3,
             patch("app.routers.plans.favorite_repo") as mock_fav,
+            patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
         ):
             mock_goal.get_latest_goal = AsyncMock(return_value=MOCK_GOAL)
             mock_plan.upsert_weekly_plans = AsyncMock(return_value=None)
             mock_plan.get_weekly_plans = AsyncMock(return_value=_make_daily_plans_response())
             mock_fav.get_favorite_recipe_ids = AsyncMock(return_value=set())
+            mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
 
             from datetime import timedelta
 

@@ -23,6 +23,10 @@ def _row_to_recipe(row: dict[str, Any], ingredients: list[dict] | None = None) -
                 mext_food_id=i.get("mext_food_id"),
                 match_confidence=i.get("match_confidence"),
                 manual_review_needed=i.get("manual_review_needed", False),
+                kcal=i.get("kcal"),
+                protein_g=i.get("protein_g"),
+                fat_g=i.get("fat_g"),
+                carbs_g=i.get("carbs_g"),
             )
             for i in ingredients
         ]
@@ -216,7 +220,9 @@ async def get_recipes_for_dinner(
     主食タグ/キーワードマッチレシピは TAG_MATCH_BONUS 分のスコア優遇を受ける。
     sort_key = abs(protein - target) - (FAVORITE_BONUS if favorite else 0) - (TAG_MATCH_BONUS if staple_match else 0)
     """
-    response = await supabase.table("recipes").select("*").eq("is_nutrition_calculated", True).limit(100).execute()
+    # 栄養計算済みを優先するが、未計算しか無い環境でも夕食レシピが表示されるよう
+    # 候補取得自体は全レシピを対象にする。
+    response = await supabase.table("recipes").select("*").limit(200).execute()
     rows = response.data or []
     candidates: list[tuple[float, Recipe]] = []
     exclude_set = set(exclude_ids) if exclude_ids else set()

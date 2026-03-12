@@ -85,3 +85,21 @@ async def get_workout_logs_by_date(supabase: AsyncClient, user_id: UUID, log_dat
     )
     rows: list[dict[str, Any]] = response.data  # type: ignore[assignment]
     return [_row_to_workout_log(row) for row in rows]
+
+
+async def get_workout_logs_in_range(
+    supabase: AsyncClient,
+    user_id: UUID,
+    start_date: date,
+    end_date: date,
+) -> list[WorkoutLogResponse]:
+    response = (
+        await supabase.table("workout_logs")
+        .select("*")
+        .eq("user_id", str(user_id))
+        .gte("log_date", start_date.isoformat())
+        .lte("log_date", end_date.isoformat())
+        .execute()
+    )
+    rows: list[dict[str, Any]] = response.data  # type: ignore[assignment]
+    return [_row_to_workout_log(row) for row in rows]

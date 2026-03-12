@@ -282,6 +282,12 @@ def _make_dinner_from_recipe(recipe: Recipe) -> MealSuggestion:
             "image_url": recipe.image_url,
             "recipe_url": recipe.recipe_url,
             "cooking_minutes": recipe.cooking_minutes,
+            "nutrition_per_serving": {
+                "kcal": round(nut.get("kcal", 0), 1),
+                "protein_g": round(nut.get("protein_g", 0), 1),
+                "fat_g": round(nut.get("fat_g", 0), 1),
+                "carbs_g": round(nut.get("carbs_g", 0), 1),
+            },
         },
     )
 

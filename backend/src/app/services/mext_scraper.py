@@ -6,7 +6,6 @@ CLI (data_loader.py) および backfill API から利用する。
 import asyncio
 import logging
 import re
-from urllib.parse import quote
 
 import httpx
 from app.models.food import MextFood
@@ -17,6 +16,30 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://fooddb.mext.go.jp"
 SEMAPHORE = asyncio.Semaphore(3)
 REQUEST_INTERVAL = 0.5
+FREEWORD_SELECT_PATH = "/freeword/fword_select.pl"
+
+# fooddb のカテゴリ一覧検索 URL(result_top.pl) は ERR_15 を返すことがあるため、
+# 安定して取得できるフリーワード検索のカテゴリ代表語へフォールバックする。
+CATEGORY_SEARCH_KEYWORDS: dict[str, str] = {
+    "01": "米",
+    "02": "じゃがいも",
+    "03": "砂糖",
+    "04": "大豆",
+    "05": "ごま",
+    "06": "野菜",
+    "07": "果実",
+    "08": "きのこ",
+    "09": "海藻",
+    "10": "魚",
+    "11": "肉",
+    "12": "卵",
+    "13": "牛乳",
+    "14": "油",
+    "15": "菓子",
+    "16": "コーヒー",
+    "17": "しょうゆ",
+    "18": "加工食品",
+}
 
 
 def _parse_float(text: str) -> float:
@@ -43,7 +66,13 @@ def parse_food_detail(html: str, item_no: str) -> MextFood | None:
     name = re.sub(r"^食品成分データベース\s*[-–]\s*", "", name)
 
     # カテゴリ情報
-    category_code = item_no.split("_")[0] if "_" in item_no else "00"
+    parts = item_no.split("_")
+    if len(parts) >= 2 and len(parts[1]) == 2 and parts[1].isdigit():
+        # 新形式: 7_11_11214 -> 11 をカテゴリコードとして扱う
+        category_code = parts[1]
+    else:
+        # 旧形式: 11_01088_7 -> 11
+        category_code = parts[0] if parts else "00"
     category_map = {
         "01": "穀類",
         "02": "いも及びでん粉類",
@@ -68,34 +97,67 @@ def parse_food_detail(html: str, item_no: str) -> MextFood | None:
 
     # 栄養素テーブルからデータ取得
     raw_data: dict = {}
-    rows = soup.select("table tr")
     kcal = protein = fat = carbs = 0.0
     fiber = sodium = calcium = iron = None
+    parsed_any = False
 
-    for row in rows:
-        cells = row.select("td, th")
-        if len(cells) < 2:
+    # 現行 fooddb レイアウト: td.pr_name と td.num / td.marker の組
+    for row in soup.select("table tr"):
+        name_cell = row.select_one("td.pr_name")
+        value_cell = row.select_one("td.num, td.marker")
+        if not name_cell or not value_cell:
             continue
-        label = cells[0].get_text(strip=True)
-        value_text = cells[-1].get_text(strip=True)
-        raw_data[label] = value_text
 
-        if "エネルギー" in label and "kJ" not in label:
+        label = name_cell.get_text(strip=True)
+        unit_cell = row.select_one("td.pr_unit")
+        unit = unit_cell.get_text(strip=True) if unit_cell else ""
+        value_text = value_cell.get_text(strip=True)
+        raw_data[label] = value_text
+        parsed_any = True
+
+        if label == "エネルギー" and unit == "kcal":
             kcal = _parse_float(value_text)
-        elif label == "たんぱく質" or "たんぱく質" in label and "アミノ酸" not in label:
+        elif label == "たんぱく質":
             protein = _parse_float(value_text)
-        elif label == "脂質" or (label.startswith("脂質") and "脂肪酸" not in label):
+        elif label == "脂質":
             fat = _parse_float(value_text)
-        elif "炭水化物" in label and "利用可能" not in label:
+        elif label == "炭水化物":
             carbs = _parse_float(value_text)
-        elif "食物繊維総量" in label:
+        elif label == "食物繊維総量":
             fiber = _parse_float(value_text)
-        elif "ナトリウム" in label:
+        elif label == "ナトリウム":
             sodium = _parse_float(value_text)
-        elif "カルシウム" in label:
+        elif label == "カルシウム":
             calcium = _parse_float(value_text)
-        elif label == "鉄" or label.startswith("鉄"):
+        elif label == "鉄":
             iron = _parse_float(value_text)
+
+    # 旧HTML向けフォールバック
+    if not parsed_any:
+        for row in soup.select("table tr"):
+            cells = row.select("td, th")
+            if len(cells) < 2:
+                continue
+            label = cells[0].get_text(strip=True)
+            value_text = cells[-1].get_text(strip=True)
+            raw_data[label] = value_text
+
+            if "エネルギー" in label and "kJ" not in label:
+                kcal = _parse_float(value_text)
+            elif label == "たんぱく質" or ("たんぱく質" in label and "アミノ酸" not in label):
+                protein = _parse_float(value_text)
+            elif label == "脂質" or (label.startswith("脂質") and "脂肪酸" not in label):
+                fat = _parse_float(value_text)
+            elif "炭水化物" in label and "利用可能" not in label:
+                carbs = _parse_float(value_text)
+            elif "食物繊維総量" in label:
+                fiber = _parse_float(value_text)
+            elif "ナトリウム" in label:
+                sodium = _parse_float(value_text)
+            elif "カルシウム" in label:
+                calcium = _parse_float(value_text)
+            elif label == "鉄" or label.startswith("鉄"):
+                iron = _parse_float(value_text)
 
     return MextFood(
         mext_food_id=item_no,
@@ -126,27 +188,66 @@ async def scrape_food_detail(client: httpx.AsyncClient, item_no: str) -> MextFoo
 
 
 def _extract_item_nos(html: str) -> list[str]:
-    """HTML から ITEM_NO のリストを抽出する（共通ヘルパー）。"""
+    """HTML から ITEM_NO のリストを抽出する（共通ヘルパー）。
+
+    fooddb では結果画面に ITEM_NO がリンク形式または checkbox value で存在する。
+    """
     soup = BeautifulSoup(html, "html.parser")
     item_nos: list[str] = []
+    seen: set[str] = set()
+
     for link in soup.select("a[href*='ITEM_NO=']"):
         href = link.get("href", "")
         match = re.search(r"ITEM_NO=([^&]+)", href)
         if match:
-            item_nos.append(match.group(1))
+            item_no = match.group(1)
+            if item_no not in seen:
+                seen.add(item_no)
+                item_nos.append(item_no)
+
+    for checkbox in soup.select("input[name='ITEM_NO'][value]"):
+        item_no = checkbox.get("value", "").strip()
+        if item_no and item_no not in seen:
+            seen.add(item_no)
+            item_nos.append(item_no)
+
     return item_nos
 
 
 async def scrape_category_list(client: httpx.AsyncClient, category_code: str) -> list[str]:
     """カテゴリページから ITEM_NO のリストを取得する。"""
+    # 旧導線: result_top.pl（現在は ERR_15 を返す場合がある）
     async with SEMAPHORE:
         url = f"{BASE_URL}/result/result_top.pl?USER_ID=&MODE=2&CATEGORY_CODE={category_code}"
         resp = await client.get(url, follow_redirects=True)
         await asyncio.sleep(REQUEST_INTERVAL)
 
     if resp.status_code != 200:
-        return []
+        legacy_items: list[str] = []
+    else:
+        legacy_items = _extract_item_nos(resp.text)
+        if legacy_items:
+            return legacy_items
 
+    keyword = CATEGORY_SEARCH_KEYWORDS.get(category_code)
+    if not keyword:
+        return []
+    logger.info("MEXT category fallback to freeword search: code=%s keyword=%s", category_code, keyword)
+    return await _search_item_nos_by_freeword(client, keyword)
+
+
+async def _search_item_nos_by_freeword(client: httpx.AsyncClient, keyword: str) -> list[str]:
+    async with SEMAPHORE:
+        resp = await client.post(
+            f"{BASE_URL}{FREEWORD_SELECT_PATH}",
+            data={"SEARCH_WORD": keyword, "USER_ID": "", "function1": "検索"},
+            follow_redirects=True,
+        )
+        await asyncio.sleep(REQUEST_INTERVAL)
+
+    if resp.status_code != 200:
+        logger.warning("MEXT freeword search HTTP %d for '%s'", resp.status_code, keyword)
+        return []
     return _extract_item_nos(resp.text)
 
 
@@ -171,13 +272,17 @@ async def search_foods_by_name(
     失敗時は空リストを返す（ログ出力のみ、例外は伝播しない）。
     タイムアウト時は 1 回だけリトライする。
     """
-    url = f"{BASE_URL}/result/result_top.pl?MODE=1&SEARCH_WORD={quote(name)}"
+    url = f"{BASE_URL}{FREEWORD_SELECT_PATH}"
     retries = 2
 
     for attempt in range(retries):
         try:
             async with SEMAPHORE:
-                resp = await client.get(url, follow_redirects=True)
+                resp = await client.post(
+                    url,
+                    data={"SEARCH_WORD": name, "USER_ID": "", "function1": "検索"},
+                    follow_redirects=True,
+                )
                 await asyncio.sleep(REQUEST_INTERVAL)
 
             if resp.status_code != 200:

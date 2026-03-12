@@ -35,7 +35,7 @@ class TestBoulderingTemplate:
     def test_exists(self) -> None:
         t = get_template("bouldering")
         assert t.goal == "bouldering"
-        assert len(t.days) == 2
+        assert len(t.days) == 4
 
     def test_has_forearm_and_back(self) -> None:
         t = get_template("bouldering")
@@ -48,6 +48,7 @@ class TestBoulderingTemplate:
         ids = {e.id for d in t.days for e in d.exercises}
         assert "pull_up" in ids
         assert "dead_hang" in ids
+        assert "hollow_body_hold" in ids
 
 
 class TestAllTemplates:

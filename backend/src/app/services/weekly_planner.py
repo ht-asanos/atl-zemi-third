@@ -5,10 +5,11 @@ DB 保存責務は持たない（ルーター側で RPC 経由で一括保存）
 
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from math import ceil
 
 from app.models.food import FoodItem, MealSuggestion
 from app.models.nutrition import PFCBudget
-from app.models.training import TrainingDay
+from app.models.training import MuscleGroup, TrainingDay
 from app.repositories import recipe_repo
 from app.services.meal_suggestion import (
     _make_breakfast,
@@ -35,6 +36,29 @@ class WeeklyPlanResult:
     plans: list[DailyPlanData] = field(default_factory=list)
 
 
+def _apply_training_adjustments(
+    training_day: TrainingDay,
+    scale: float,
+    protect_forearms: bool,
+) -> TrainingDay:
+    exercises = []
+    for ex in training_day.exercises:
+        ex_copy = ex.model_copy(deep=True)
+        if protect_forearms and ex_copy.muscle_group.value == "forearms":
+            ex_copy.id = "scapular_pull_up"
+            ex_copy.name_ja = "スキャプラプルアップ"
+            ex_copy.muscle_group = MuscleGroup.BACK
+            ex_copy.sets = 3
+            ex_copy.reps = 10
+            ex_copy.rest_seconds = 75
+
+        if isinstance(ex_copy.reps, int):
+            ex_copy.reps = max(1, ceil(ex_copy.reps * scale))
+        ex_copy.sets = max(1, ceil(ex_copy.sets * scale))
+        exercises.append(ex_copy)
+    return TrainingDay(day_label=training_day.day_label, exercises=exercises)
+
+
 def generate_weekly_plan(
     start_date: date,
     pfc_budget: PFCBudget,
@@ -42,6 +66,8 @@ def generate_weekly_plan(
     goal_type: str,
     protein_foods: list[FoodItem] | None = None,
     bulk_foods: list[FoodItem] | None = None,
+    training_scale: float = 1.0,
+    protect_forearms: bool = False,
 ) -> list[DailyPlanData]:
     """7日分のプランを生成する。
 
@@ -49,11 +75,19 @@ def generate_weekly_plan(
     """
     template = get_template(goal_type)
     training_days = template.days
+    bouldering_schedule = [0, None, 1, None, 2, None, 3] if goal_type == "bouldering" else None
     result: list[DailyPlanData] = []
 
     for day_offset in range(7):
         current_date = start_date + timedelta(days=day_offset)
-        training_day = training_days[day_offset % len(training_days)]
+        if bouldering_schedule is not None:
+            idx = bouldering_schedule[day_offset]
+            if idx is None:
+                training_day = None
+            else:
+                training_day = _apply_training_adjustments(training_days[idx], training_scale, protect_forearms)
+        else:
+            training_day = training_days[day_offset % len(training_days)]
         meals = generate_daily_meals(
             pfc_budget,
             staple,
@@ -79,15 +113,25 @@ async def generate_weekly_plan_v2(
     supabase: AsyncClient | None = None,
     protein_foods: list[FoodItem] | None = None,
     bulk_foods: list[FoodItem] | None = None,
+    training_scale: float = 1.0,
+    protect_forearms: bool = False,
 ) -> list[DailyPlanData]:
     """7日分のプランを生成する（レシピ提案対応版）。"""
     template = get_template(goal_type)
     training_days = template.days
+    bouldering_schedule = [0, None, 1, None, 2, None, 3] if goal_type == "bouldering" else None
     result: list[DailyPlanData] = []
 
     for day_offset in range(7):
         current_date = start_date + timedelta(days=day_offset)
-        training_day = training_days[day_offset % len(training_days)]
+        if bouldering_schedule is not None:
+            idx = bouldering_schedule[day_offset]
+            if idx is None:
+                training_day = None
+            else:
+                training_day = _apply_training_adjustments(training_days[idx], training_scale, protect_forearms)
+        else:
+            training_day = training_days[day_offset % len(training_days)]
         meals = await generate_daily_meals_v2(
             pfc_budget,
             staple,
@@ -114,10 +158,13 @@ async def generate_weekly_plan_v3(
     favorite_ids: set | None = None,
     staple_tags: list[str] | None = None,
     staple_keywords: list[str] | None = None,
+    training_scale: float = 1.0,
+    protect_forearms: bool = False,
 ) -> list[DailyPlanData]:
     """朝食固定 + 昼食固定 + 夕食レシピ（7日重複なし、PFC フィルタ付き）。"""
     template = get_template(goal_type)
     training_days = template.days
+    bouldering_schedule = [0, None, 1, None, 2, None, 3] if goal_type == "bouldering" else None
 
     # 朝食・昼食の栄養を差し引いて夕食予算を算出
     sample_breakfast = _make_breakfast()
@@ -138,7 +185,14 @@ async def generate_weekly_plan_v3(
     for day_offset in range(7):
         recipe = dinner_recipes[day_offset] if day_offset < len(dinner_recipes) else None
         meals = generate_structured_daily_meals(recipe=recipe)
-        training_day = training_days[day_offset % len(training_days)]
+        if bouldering_schedule is not None:
+            idx = bouldering_schedule[day_offset]
+            if idx is None:
+                training_day = None
+            else:
+                training_day = _apply_training_adjustments(training_days[idx], training_scale, protect_forearms)
+        else:
+            training_day = training_days[day_offset % len(training_days)]
         result.append(
             DailyPlanData(
                 plan_date=start_date + timedelta(days=day_offset),
