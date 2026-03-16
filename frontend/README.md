@@ -14,6 +14,7 @@ cp .env.example .env.local
 npm run dev      # 開発サーバー (http://localhost:3000)
 npm run build    # プロダクションビルド
 npm run start    # プロダクションサーバー
+npm run vibe     # Vibe Kanban 起動
 ```
 
 ## ページフロー

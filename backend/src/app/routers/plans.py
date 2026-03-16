@@ -1,14 +1,17 @@
 from datetime import date
 from uuid import UUID
 
+from app.data.food_master import STAPLE_TAG_MAP, STAPLE_TITLE_KEYWORDS
 from app.dependencies.auth import get_current_user_id
 from app.dependencies.supabase_client import get_authenticated_supabase
 from app.models.food import FoodCategory, MealSuggestion
 from app.models.nutrition import PFCBudget
-from app.repositories import favorite_repo, food_repo, goal_repo, plan_repo, recipe_repo
+from app.repositories import favorite_repo, food_repo, goal_repo, plan_repo, recipe_repo, shopping_check_repo
 from app.schemas.plan import (
     DailyPlanResponse,
     PatchMealRequest,
+    SetShoppingListCheckRequest,
+    ShoppingListChecksResponse,
     ShoppingListResponse,
     WeeklyPlanRequest,
     WeeklyPlanResponse,
@@ -16,7 +19,7 @@ from app.schemas.plan import (
 from app.services.meal_suggestion import _make_dinner_from_recipe, calc_dinner_budget, generate_daily_meals
 from app.services.shopping_list import generate_shopping_list
 from app.services.training_adaptation import build_next_week_training_adjustment
-from app.services.weekly_planner import generate_weekly_plan, generate_weekly_plan_v3
+from app.services.weekly_planner import generate_weekly_plan, generate_weekly_plan_v3_validated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from postgrest.exceptions import APIError
 
@@ -53,7 +56,33 @@ async def get_shopping_list(
     user_id: UUID = Depends(get_current_user_id),
     supabase: AsyncClient = Depends(get_authenticated_supabase),
 ) -> ShoppingListResponse:
-    return await generate_shopping_list(supabase, user_id, start_date)
+    checked_group_ids = await shopping_check_repo.get_checked_group_ids(supabase, user_id, start_date)
+    return await generate_shopping_list(supabase, user_id, start_date, checked_group_ids=checked_group_ids)
+
+
+@router.get("/weekly/shopping-list/checks", response_model=ShoppingListChecksResponse)
+async def get_shopping_list_checks(
+    start_date: date = Query(...),
+    user_id: UUID = Depends(get_current_user_id),
+    supabase: AsyncClient = Depends(get_authenticated_supabase),
+) -> ShoppingListChecksResponse:
+    checked_group_ids = await shopping_check_repo.get_checked_group_ids(supabase, user_id, start_date)
+    return ShoppingListChecksResponse(start_date=start_date, checked_group_ids=sorted(checked_group_ids))
+
+
+@router.post("/weekly/shopping-list/checks", status_code=status.HTTP_204_NO_CONTENT)
+async def set_shopping_list_check(
+    body: SetShoppingListCheckRequest,
+    user_id: UUID = Depends(get_current_user_id),
+    supabase: AsyncClient = Depends(get_authenticated_supabase),
+) -> None:
+    await shopping_check_repo.set_group_checked(
+        supabase=supabase,
+        user_id=user_id,
+        start_date=body.start_date,
+        group_id=body.group_id,
+        checked=body.checked,
+    )
 
 
 @router.post("/weekly", status_code=status.HTTP_201_CREATED, response_model=WeeklyPlanResponse)
@@ -74,11 +103,9 @@ async def create_weekly_plan(
         staple_tags = None
         staple_keywords = None
         if body.staple_name:
-            from app.data.food_master import STAPLE_TAG_MAP, STAPLE_TITLE_KEYWORDS
-
             staple_tags = STAPLE_TAG_MAP.get(body.staple_name)
             staple_keywords = STAPLE_TITLE_KEYWORDS.get(body.staple_name)
-        daily_plans = await generate_weekly_plan_v3(
+        daily_plans, validation = await generate_weekly_plan_v3_validated(
             start_date=body.start_date,
             pfc_budget=pfc_budget,
             goal_type=goal.goal_type,
@@ -89,6 +116,16 @@ async def create_weekly_plan(
             training_scale=training_adj.scale,
             protect_forearms=training_adj.protect_forearms,
         )
+        # 主食指定時は非一致フォールバックを許容しない。
+        # 一致候補ゼロなら生成を失敗として返し、ユーザーに再設定を促す。
+        if body.staple_name and validation.metrics.get("staple_match_count", 0) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"主食「{body.staple_name}」に一致する夕食レシピが見つかりません。"
+                    "主食を変更するか、レシピデータを追加してください。"
+                ),
+            )
     else:  # classic
         if not body.staple_name:
             raise HTTPException(
@@ -109,7 +146,10 @@ async def create_weekly_plan(
             protect_forearms=training_adj.protect_forearms,
         )
 
-    plan_meta = {"mode": body.mode, "staple_name": body.staple_name}
+    plan_meta: dict = {"mode": body.mode, "staple_name": body.staple_name}
+    if body.mode == "recipe":
+        plan_meta["validation"] = validation.metrics
+        plan_meta["validation_issues"] = validation.issues
     plans_data = [
         {
             "user_id": str(user_id),
@@ -213,10 +253,27 @@ async def patch_recipe(
 
     dinner_budget = calc_dinner_budget(pfc_budget, breakfast_meal, lunch_meal)
 
-    # 新レシピ取得（現在のレシピを除外）
-    new_recipes = await recipe_repo.get_recipes_for_dinner(
-        supabase, dinner_budget, count=1, exclude_ids=[current_recipe_id]
+    # plan_meta から staple 情報を復元
+    plan_meta = row.get("plan_meta") or {}
+    staple_name = plan_meta.get("staple_name")
+    patch_staple_tags = STAPLE_TAG_MAP.get(staple_name) if staple_name else None
+    patch_staple_keywords = STAPLE_TITLE_KEYWORDS.get(staple_name) if staple_name else None
+
+    # 新レシピ取得（現在のレシピを除外、主食フィルタ付き）
+    result = await recipe_repo.get_recipes_for_dinner(
+        supabase,
+        dinner_budget,
+        count=1,
+        exclude_ids=[current_recipe_id],
+        staple_tags=patch_staple_tags,
+        staple_keywords=patch_staple_keywords,
     )
+    if staple_name and result.staple_match_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"主食「{staple_name}」に一致する代替レシピが見つかりません",
+        )
+    new_recipes = result.recipes
     if not new_recipes:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No alternative recipe found")
 

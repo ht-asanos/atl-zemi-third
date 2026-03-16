@@ -10,6 +10,8 @@ import { GoalSelector } from '@/components/setup/goal-selector'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { InlineSpinner } from '@/components/ui/spinner'
+import { StepIndicator } from '@/components/ui/step-indicator'
 import { ApiError } from '@/lib/api/client'
 import type { CreateProfileRequest } from '@/types/profile'
 import type { GoalType } from '@/types/goal'
@@ -58,6 +60,8 @@ export default function SetupPage() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
+      <StepIndicator currentStep={1} />
+
       <h1 className="mb-6 text-3xl font-bold">初期設定</h1>
       <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
@@ -87,7 +91,7 @@ export default function SetupPage() {
         </Card>
 
         <Button type="submit" size="lg" className="w-full" disabled={loading}>
-          {loading ? '保存中...' : '次へ: 主食を選ぶ'}
+          {loading ? <><InlineSpinner /> 保存中...</> : '次へ: 主食を選ぶ'}
         </Button>
       </form>
     </div>

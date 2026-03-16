@@ -1,8 +1,10 @@
 """食材マッチング + confidence のテスト"""
 
+from app.models.food import NutritionStatus
 from app.services.ingredient_matcher import (
     CONFIDENCE_AUTO_MATCH,
     CONFIDENCE_MANUAL_REVIEW,
+    NutritionResult,
     _convert_to_grams,
     estimate_amount_g,
     parse_ingredient_text,
@@ -99,3 +101,35 @@ class TestEstimateAmountG:
 
     def test_other_defaults_to_100g(self):
         assert estimate_amount_g("鶏もも肉") == 100.0
+
+
+class TestNutritionResult:
+    def test_calculated_status(self):
+        result = NutritionResult(
+            nutrition={"kcal": 300, "protein_g": 20, "fat_g": 10, "carbs_g": 30},
+            status=NutritionStatus.CALCULATED,
+            matched_count=5,
+            total_count=5,
+        )
+        assert result.status == NutritionStatus.CALCULATED
+        assert result.nutrition is not None
+
+    def test_estimated_status(self):
+        result = NutritionResult(
+            nutrition={"kcal": 200, "protein_g": 15, "fat_g": 8, "carbs_g": 25},
+            status=NutritionStatus.ESTIMATED,
+            matched_count=3,
+            total_count=5,
+        )
+        assert result.status == NutritionStatus.ESTIMATED
+        assert result.matched_count < result.total_count
+
+    def test_failed_status(self):
+        result = NutritionResult(
+            nutrition=None,
+            status=NutritionStatus.FAILED,
+            matched_count=0,
+            total_count=5,
+        )
+        assert result.status == NutritionStatus.FAILED
+        assert result.nutrition is None

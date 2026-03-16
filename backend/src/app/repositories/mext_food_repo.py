@@ -13,6 +13,7 @@ def _row_to_mext_food(row: dict[str, Any]) -> MextFood:
         id=row["id"],
         mext_food_id=row["mext_food_id"],
         name=row["name"],
+        display_name=row.get("display_name"),
         category_code=row["category_code"],
         category_name=row["category_name"],
         kcal_per_100g=row["kcal_per_100g"],
@@ -67,3 +68,19 @@ async def upsert_foods(supabase: AsyncClient, foods: list[MextFood]) -> int:
     ]
     response = await supabase.table("mext_foods").upsert(records, on_conflict="mext_food_id").execute()
     return len(response.data or [])
+
+
+async def get_foods_without_display_name(supabase: AsyncClient, limit: int = 200) -> list[MextFood]:
+    """display_name が NULL のレコードを取得する。"""
+    response = await supabase.table("mext_foods").select("*").is_("display_name", "null").limit(limit).execute()
+    rows: list[dict[str, Any]] = response.data or []
+    return [_row_to_mext_food(r) for r in rows]
+
+
+async def update_display_names(supabase: AsyncClient, updates: list[tuple[UUID, str]]) -> int:
+    """display_name を一括更新する。update-display-names CLI 専用。"""
+    count = 0
+    for food_id, display_name in updates:
+        await supabase.table("mext_foods").update({"display_name": display_name}).eq("id", str(food_id)).execute()
+        count += 1
+    return count

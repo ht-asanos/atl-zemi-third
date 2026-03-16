@@ -65,7 +65,12 @@ class TestUpdateReviewIngredient:
         with patch("app.routers.admin.recipe_repo.update_ingredient_match") as mock_update:
             mock_update.return_value = recipe_id
             with patch("app.routers.admin.calculate_recipe_nutrition") as mock_calc:
-                mock_calc.return_value = {"kcal": 300}
+                from app.models.food import NutritionStatus
+                from app.services.ingredient_matcher import NutritionResult
+
+                mock_calc.return_value = NutritionResult(
+                    nutrition={"kcal": 300}, status=NutritionStatus.CALCULATED, matched_count=1, total_count=1
+                )
                 resp = client.patch(
                     f"/admin/review/ingredients/{ingredient_id}",
                     json={"mext_food_id": str(mext_food_id), "approved": True},
@@ -85,7 +90,13 @@ class TestUpdateReviewIngredient:
 
         with patch("app.routers.admin.recipe_repo.update_ingredient_match") as mock_update:
             mock_update.return_value = recipe_id
-            with patch("app.routers.admin.calculate_recipe_nutrition"):
+            with patch("app.routers.admin.calculate_recipe_nutrition") as mock_calc:
+                from app.models.food import NutritionStatus
+                from app.services.ingredient_matcher import NutritionResult
+
+                mock_calc.return_value = NutritionResult(
+                    nutrition=None, status=NutritionStatus.FAILED, matched_count=0, total_count=0
+                )
                 resp = client.patch(
                     f"/admin/review/ingredients/{ingredient_id}",
                     json={"approved": False},

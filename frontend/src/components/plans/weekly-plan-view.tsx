@@ -5,11 +5,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { DAY_SHORT } from '@/lib/constants'
 import { DailyPlanCard } from './daily-plan-card'
 import type { DailyPlanResponse } from '@/types/plan'
 import type { FoodItem } from '@/types/food'
-
-const DAY_SHORT = ['月', '火', '水', '木', '金', '土', '日']
 
 interface WeeklyPlanViewProps {
   plans: DailyPlanResponse[]

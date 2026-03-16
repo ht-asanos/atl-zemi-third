@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+from app.models.food import NutritionStatus
 from app.repositories import mext_food_repo, recipe_repo
 from app.schemas.recipe import BackfillResult, RefreshResult
 from app.services.ingredient_matcher import (
@@ -17,7 +18,10 @@ from app.services.ingredient_matcher import (
     parse_ingredient_text,
 )
 from app.services.mext_scraper import search_foods_by_name
+from app.services.nutrition_fallback import get_fallback_nutrition
 from app.services.rakuten_recipe import fetch_multiple_categories
+from app.services.recipe_quality_gate import filter_meal_like_recipes
+from app.services.shopping_normalizer import normalize_ingredient_candidates
 
 from supabase import AsyncClient
 
@@ -37,7 +41,22 @@ async def _upsert_and_match_recipes(
             ingredients = r.get("ingredients", [])
             if ingredients:
                 await match_recipe_ingredients(supabase, rid, ingredients)
-                await calculate_recipe_nutrition(supabase, rid)
+                result = await calculate_recipe_nutrition(supabase, rid)
+                if result.status == NutritionStatus.FAILED:
+                    recipe_obj = await recipe_repo.get_recipe_by_id(supabase, rid)
+                    if recipe_obj:
+                        fallback = get_fallback_nutrition(recipe_obj)
+                        await (
+                            supabase.table("recipes")
+                            .update(
+                                {
+                                    "nutrition_per_serving": fallback,
+                                    "nutrition_status": NutritionStatus.ESTIMATED.value,
+                                }
+                            )
+                            .eq("id", str(rid))
+                            .execute()
+                        )
             updated += 1
         except Exception as e:
             errors.append(f"{r.get('title', '?')}: {e}")
@@ -66,7 +85,15 @@ async def refresh_stale_recipes(
             errors=[],
         )
 
-    recipes = await fetch_multiple_categories(http_client, rakuten_app_id, rakuten_access_key, old_categories)
+    fetched_recipes = await fetch_multiple_categories(http_client, rakuten_app_id, rakuten_access_key, old_categories)
+    gate = await filter_meal_like_recipes(fetched_recipes)
+    recipes = gate.accepted
+    logger.info(
+        "refresh_stale_recipes quality gate: fetched=%d accepted=%d rejected=%d",
+        len(fetched_recipes),
+        len(recipes),
+        len(gate.rejected),
+    )
     updated, errors = await _upsert_and_match_recipes(supabase, recipes)
 
     return RefreshResult(
@@ -140,7 +167,22 @@ async def backfill_unmatched_ingredients(
     # 栄養再計算
     recipe_ids = list({r["recipe_id"] for r in rows})
     for rid in recipe_ids:
-        await calculate_recipe_nutrition(supabase, rid)
+        result = await calculate_recipe_nutrition(supabase, rid)
+        if result.status == NutritionStatus.FAILED:
+            recipe_obj = await recipe_repo.get_recipe_by_id(supabase, rid)
+            if recipe_obj:
+                fallback = get_fallback_nutrition(recipe_obj)
+                await (
+                    supabase.table("recipes")
+                    .update(
+                        {
+                            "nutrition_per_serving": fallback,
+                            "nutrition_status": NutritionStatus.ESTIMATED.value,
+                        }
+                    )
+                    .eq("id", str(rid))
+                    .execute()
+                )
 
     still_unmatched = unmatched_before - matched_after
     return BackfillResult(
@@ -150,3 +192,45 @@ async def backfill_unmatched_ingredients(
         still_unmatched=still_unmatched,
         errors=errors,
     )
+
+
+async def backfill_missing_normalized_ingredients(
+    supabase: AsyncClient,
+    http_client: httpx.AsyncClient,
+    max_results: int = 3,
+) -> dict[str, int | list[str]]:
+    """recipe_ingredients 由来の正規化名が mext_foods に存在しない場合、MEXT から補完する。"""
+    resp = await supabase.table("recipe_ingredients").select("ingredient_name").execute()
+    rows: list[dict[str, Any]] = resp.data or []
+    if not rows:
+        return {"normalized_names": 0, "added_foods": 0, "missing_names": [], "errors": []}
+
+    normalized_names: set[str] = set()
+    for row in rows:
+        for candidate in normalize_ingredient_candidates(row.get("ingredient_name", "")):
+            if candidate:
+                normalized_names.add(candidate)
+
+    added_foods = 0
+    missing_names: list[str] = []
+    errors: list[str] = []
+
+    for name in sorted(normalized_names):
+        existing = await mext_food_repo.search_by_name(supabase, name, limit=1)
+        if existing:
+            continue
+        try:
+            foods = await search_foods_by_name(http_client, name, max_results=max_results)
+            if not foods:
+                missing_names.append(name)
+                continue
+            added_foods += await mext_food_repo.upsert_foods(supabase, foods)
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+
+    return {
+        "normalized_names": len(normalized_names),
+        "added_foods": added_foods,
+        "missing_names": missing_names,
+        "errors": errors,
+    }

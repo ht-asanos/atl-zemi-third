@@ -1,16 +1,30 @@
 export interface ShoppingListItem {
   ingredient_name: string
+  group_id?: string | null
+  checked?: boolean
   mext_food_id?: string | null
   amount_text?: string | null
   amount_g?: number | null
   category_name?: string | null
   recipe_titles: string[]
+  is_purchasable?: boolean
 }
 
 export interface ShoppingListResponse {
   start_date: string
   items: ShoppingListItem[]
   recipe_count: number
+}
+
+export interface ShoppingListChecksResponse {
+  start_date: string
+  checked_group_ids: string[]
+}
+
+export interface SetShoppingListCheckRequest {
+  start_date: string
+  group_id: string
+  checked: boolean
 }
 
 export interface WeeklyPlanRequest {
@@ -66,6 +80,8 @@ export interface MealSuggestion {
   total_price_yen: number
   total_cooking_minutes: number
   recipe?: RecipeInPlan | null
+  nutrition_status?: 'calculated' | 'estimated' | 'failed' | null
+  nutrition_warning?: string | null
 }
 
 export interface FoodItemInPlan {

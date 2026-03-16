@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/providers/auth-provider'
 import { getWeeklyPlans } from '@/lib/api/plans'
 import {
@@ -16,9 +16,15 @@ import { FeedbackForm } from '@/components/daily/feedback-form'
 import { AdaptationResult } from '@/components/daily/adaptation-result'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { Spinner, InlineSpinner } from '@/components/ui/spinner'
+import { CalendarX2, Check } from 'lucide-react'
+import { toast } from 'sonner'
+import Link from 'next/link'
 import type { DailyPlanResponse, Exercise } from '@/types/plan'
 import type { AdaptationResponse } from '@/types/log'
 import { ApiError } from '@/lib/api/client'
+import { cn } from '@/lib/utils'
+import { getTodayLocal, getMondayOfDateLocal } from '@/lib/date-utils'
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner'] as const
 
@@ -34,41 +40,36 @@ interface WorkoutLogState {
   rpe: number | null
 }
 
-function getTodayString(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-function getMondayOfDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  d.setDate(d.getDate() + diff)
-  return d.toISOString().slice(0, 10)
-}
-
 export default function DailyContent() {
   const { session } = useAuth()
   const [todayPlan, setTodayPlan] = useState<DailyPlanResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   const [error, setError] = useState('')
   const [adaptationResult, setAdaptationResult] = useState<AdaptationResponse | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const today = getTodayString()
+  const today = getTodayLocal()
 
   const [mealLogs, setMealLogs] = useState<Record<string, MealLogState>>(() =>
     Object.fromEntries(MEAL_TYPES.map((t) => [t, { completed: false, satisfaction: null }]))
   )
   const [workoutLogs, setWorkoutLogs] = useState<Record<string, WorkoutLogState>>({})
 
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    }
+  }, [])
+
   const loadData = useCallback(async () => {
     if (!session?.access_token) return
     const token = session.access_token
 
     try {
-      const monday = getMondayOfDate(today)
+      const monday = getMondayOfDateLocal(today)
       const [weeklyRes, mealRes, workoutRes] = await Promise.all([
         getWeeklyPlans(token, monday),
         getMealLogs(token, today),
@@ -117,6 +118,7 @@ export default function DailyContent() {
     if (!session?.access_token || !todayPlan) return
     const token = session.access_token
     setSaving(true)
+    setSaved(false)
     setError('')
 
     try {
@@ -145,7 +147,12 @@ export default function DailyContent() {
       )
 
       await Promise.all([...mealPromises, ...workoutPromises])
+      toast.success('記録を保存しました')
+      setSaved(true)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000)
     } catch {
+      toast.error('記録の保存に失敗しました')
       setError('記録の保存に失敗しました')
     } finally {
       setSaving(false)
@@ -166,11 +173,14 @@ export default function DailyContent() {
       if (result.new_plan) {
         setTodayPlan(result.new_plan)
       }
+      toast.success('フィードバックを送信しました')
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setError('他の操作と競合しました。リロードしてください。')
+        toast.error('他の操作と競合しました')
       } else {
         setError('フィードバックの送信に失敗しました')
+        toast.error('フィードバックの送信に失敗しました')
       }
     } finally {
       setFeedbackLoading(false)
@@ -180,7 +190,8 @@ export default function DailyContent() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-muted-foreground">読み込み中...</p>
+        <Spinner />
+        <p className="ml-2 text-muted-foreground">読み込み中...</p>
       </div>
     )
   }
@@ -189,7 +200,16 @@ export default function DailyContent() {
     return (
       <div className="mx-auto max-w-3xl p-6">
         <h1 className="mb-4 text-3xl font-bold">Today</h1>
-        <p className="text-muted-foreground">今日のプランがありません。先に週間プランを作成してください。</p>
+        <div className="flex flex-col items-center gap-4 rounded-md border p-8 text-center">
+          <CalendarX2 className="h-12 w-12 text-muted-foreground" />
+          <p className="text-muted-foreground">今日のプランがありません。先に週間プランを作成してください。</p>
+          <Link
+            href="/plans"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
+          >
+            週間プランを確認する
+          </Link>
+        </div>
       </div>
     )
   }
@@ -294,8 +314,18 @@ export default function DailyContent() {
       <Separator className="my-6" />
 
       {/* Save Button */}
-      <Button onClick={handleSave} disabled={saving} className="mb-6 w-full">
-        {saving ? '保存中...' : '記録する'}
+      <Button
+        onClick={handleSave}
+        disabled={saving}
+        className={cn('mb-6 w-full', saved && 'bg-green-600 hover:bg-green-600')}
+      >
+        {saving ? (
+          <><InlineSpinner /> 保存中...</>
+        ) : saved ? (
+          <><Check className="mr-2 h-4 w-4" /> 保存しました</>
+        ) : (
+          '記録する'
+        )}
       </Button>
 
       <Separator className="my-6" />

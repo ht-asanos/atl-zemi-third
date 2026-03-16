@@ -1,11 +1,10 @@
 'use client'
 
 import { Separator } from '@/components/ui/separator'
+import { DAY_NAMES } from '@/lib/constants'
 import { MealSection } from './meal-section'
 import { WorkoutSection } from './workout-section'
 import type { DailyPlanResponse } from '@/types/plan'
-
-const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土']
 
 interface DailyPlanCardProps {
   plan: DailyPlanResponse

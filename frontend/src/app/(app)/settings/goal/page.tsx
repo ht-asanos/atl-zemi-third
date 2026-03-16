@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@/providers/auth-provider'
 import { GoalSelector } from '@/components/setup/goal-selector'
 import { Button } from '@/components/ui/button'
+import { Spinner, InlineSpinner } from '@/components/ui/spinner'
+import { toast } from 'sonner'
 import { getMyGoal, createGoal } from '@/lib/api/goals'
 import type { GoalType } from '@/types/goal'
 
@@ -34,11 +36,12 @@ export default function SettingsGoalPage() {
     setSaving(true)
     try {
       const result = await createGoal(session.access_token, { goal_type: goalType })
-      setSuccess(
-        `目標を更新しました（${result.target_kcal} kcal / P: ${result.protein_g}g / F: ${result.fat_g}g / C: ${result.carbs_g}g）`
-      )
+      const msg = `目標を更新しました（${result.target_kcal} kcal / P: ${result.protein_g}g / F: ${result.fat_g}g / C: ${result.carbs_g}g）`
+      toast.success(msg)
+      setSuccess('更新済み')
     } catch {
       setError('目標の更新に失敗しました')
+      toast.error('目標の更新に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -47,7 +50,8 @@ export default function SettingsGoalPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-muted-foreground">読み込み中...</p>
+        <Spinner />
+        <p className="ml-2 text-muted-foreground">読み込み中...</p>
       </div>
     )
   }
@@ -59,15 +63,15 @@ export default function SettingsGoalPage() {
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
       )}
-      {success && (
-        <div className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">{success}</div>
-      )}
 
       <GoalSelector value={goalType} onChange={setGoalType} />
 
       <Button className="mt-6 w-full" onClick={handleSave} disabled={saving}>
-        {saving ? '保存中...' : '目標を保存'}
+        {saving ? <><InlineSpinner /> 保存中...</> : '目標を保存'}
       </Button>
+      {success && (
+        <p className="mt-2 text-center text-sm text-green-600">{success}</p>
+      )}
     </div>
   )
 }

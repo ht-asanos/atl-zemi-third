@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from app.models.food import NutritionStatus
 from pydantic import BaseModel
 
 
@@ -32,3 +33,4 @@ class Recipe(BaseModel):
     cost_estimate: str | None = None
     tags: list[str] = []
     is_nutrition_calculated: bool = False
+    nutrition_status: NutritionStatus = NutritionStatus.CALCULATED

@@ -20,8 +20,11 @@ dist/
 !.env.example
 # Local tool output
 *.log
+tmp/
 # Local-only service sandbox
 agent-service/
+.codex/
+.mcp.json
 # Supabase local state
 backend/supabase/.temp/
 backend/supabase/.branches/

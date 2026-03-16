@@ -1,12 +1,8 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-
-const MEAL_TYPE_LABELS: Record<string, string> = {
-  breakfast: '朝食',
-  lunch: '昼食',
-  dinner: '夕食',
-}
+import { Star } from 'lucide-react'
+import { MEAL_TYPE_LABELS } from '@/lib/constants'
 
 interface MealLogCardProps {
   mealType: string
@@ -48,9 +44,15 @@ export function MealLogCard({
                   key={n}
                   type="button"
                   onClick={() => onSatisfactionChange(satisfaction === n ? null : n)}
-                  className={`text-xl ${satisfaction !== null && n <= satisfaction ? 'text-yellow-400' : 'text-gray-300'}`}
+                  aria-label={`満足度${n}`}
                 >
-                  ★
+                  <Star
+                    className={`h-5 w-5 transition-colors ${
+                      satisfaction !== null && n <= satisfaction
+                        ? 'fill-yellow-400 text-yellow-400'
+                        : 'text-gray-300'
+                    }`}
+                  />
                 </button>
               ))}
             </div>

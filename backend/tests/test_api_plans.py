@@ -174,7 +174,7 @@ class TestCreateWeeklyPlanRecipe:
         with (
             patch("app.routers.plans.goal_repo") as mock_goal,
             patch("app.routers.plans.plan_repo") as mock_plan,
-            patch("app.routers.plans.generate_weekly_plan_v3") as mock_v3,
+            patch("app.routers.plans.generate_weekly_plan_v3_validated") as mock_v3,
             patch("app.routers.plans.favorite_repo") as mock_fav,
             patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
         ):
@@ -184,14 +184,15 @@ class TestCreateWeeklyPlanRecipe:
             mock_fav.get_favorite_recipe_ids = AsyncMock(return_value=set())
             mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
 
-            # generate_weekly_plan_v3 をモック（実際の DB アクセスを回避）
+            # generate_weekly_plan_v3_validated をモック（実際の DB アクセスを回避）
             from datetime import timedelta
 
             from app.services.meal_suggestion import generate_structured_daily_meals
+            from app.services.plan_validator import ValidationResult
             from app.services.weekly_planner import DailyPlanData
 
             start = date(2026, 3, 9)
-            mock_v3.return_value = [
+            mock_plans = [
                 DailyPlanData(
                     plan_date=start + timedelta(days=i),
                     meals=generate_structured_daily_meals(recipe=None),
@@ -199,6 +200,7 @@ class TestCreateWeeklyPlanRecipe:
                 )
                 for i in range(7)
             ]
+            mock_v3.return_value = (mock_plans, ValidationResult())
 
             resp = test_client.post(
                 "/plans/weekly",
@@ -217,7 +219,7 @@ class TestCreateWeeklyPlanRecipe:
         with (
             patch("app.routers.plans.goal_repo") as mock_goal,
             patch("app.routers.plans.plan_repo") as mock_plan,
-            patch("app.routers.plans.generate_weekly_plan_v3") as mock_v3,
+            patch("app.routers.plans.generate_weekly_plan_v3_validated") as mock_v3,
             patch("app.routers.plans.favorite_repo") as mock_fav,
             patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
         ):
@@ -230,10 +232,11 @@ class TestCreateWeeklyPlanRecipe:
             from datetime import timedelta
 
             from app.services.meal_suggestion import generate_structured_daily_meals
+            from app.services.plan_validator import ValidationResult
             from app.services.weekly_planner import DailyPlanData
 
             start = date(2026, 3, 9)
-            mock_v3.return_value = [
+            mock_plans = [
                 DailyPlanData(
                     plan_date=start + timedelta(days=i),
                     meals=generate_structured_daily_meals(recipe=None),
@@ -241,14 +244,56 @@ class TestCreateWeeklyPlanRecipe:
                 )
                 for i in range(7)
             ]
+            mock_v3.return_value = (mock_plans, ValidationResult())
 
             resp = test_client.post(
                 "/plans/weekly",
                 json={"start_date": "2026-03-09"},
             )
         assert resp.status_code == 201
-        # generate_weekly_plan_v3 が呼ばれたことを確認
+        # generate_weekly_plan_v3_validated が呼ばれたことを確認
         mock_v3.assert_called_once()
+
+    def test_recipe_mode_with_staple_no_match_returns_422(self, client) -> None:
+        """主食指定で一致候補ゼロなら422で失敗する。"""
+        test_client, _ = client
+        with (
+            patch("app.routers.plans.goal_repo") as mock_goal,
+            patch("app.routers.plans.plan_repo") as mock_plan,
+            patch("app.routers.plans.generate_weekly_plan_v3_validated") as mock_v3,
+            patch("app.routers.plans.favorite_repo") as mock_fav,
+            patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
+        ):
+            mock_goal.get_latest_goal = AsyncMock(return_value=MOCK_GOAL)
+            mock_plan.upsert_weekly_plans = AsyncMock(return_value=None)
+            mock_plan.get_weekly_plans = AsyncMock(return_value=_make_daily_plans_response())
+            mock_fav.get_favorite_recipe_ids = AsyncMock(return_value=set())
+            mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
+
+            from datetime import timedelta
+
+            from app.services.meal_suggestion import generate_structured_daily_meals
+            from app.services.plan_validator import ValidationResult
+            from app.services.weekly_planner import DailyPlanData
+
+            start = date(2026, 3, 9)
+            mock_plans = [
+                DailyPlanData(
+                    plan_date=start + timedelta(days=i),
+                    meals=generate_structured_daily_meals(recipe=None),
+                    training_day=None,
+                )
+                for i in range(7)
+            ]
+            # 主食一致ゼロを明示
+            validation = ValidationResult(is_valid=True, issues=[], metrics={"staple_match_count": 0})
+            mock_v3.return_value = (mock_plans, validation)
+
+            resp = test_client.post(
+                "/plans/weekly",
+                json={"start_date": "2026-03-09", "mode": "recipe", "staple_name": "冷凍うどん"},
+            )
+        assert resp.status_code == 422
 
 
 class TestPatchMeal:

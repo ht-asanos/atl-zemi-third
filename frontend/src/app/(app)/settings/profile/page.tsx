@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
 import { ProfileForm } from '@/components/setup/profile-form'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Spinner, InlineSpinner } from '@/components/ui/spinner'
+import { toast } from 'sonner'
 import { getMyProfile, updateProfile } from '@/lib/api/profiles'
 import type { CreateProfileRequest } from '@/types/profile'
 
@@ -52,10 +55,12 @@ export default function SettingsProfilePage() {
       if (result.goal_recalculation_needed) {
         setShowRecalcDialog(true)
       } else {
-        setSuccess('プロフィールを更新しました')
+        toast.success('プロフィールを更新しました')
+        setSuccess('更新済み')
       }
     } catch {
       setError('プロフィールの更新に失敗しました')
+      toast.error('プロフィールの更新に失敗しました')
     } finally {
       setSaving(false)
     }
@@ -64,7 +69,8 @@ export default function SettingsProfilePage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-muted-foreground">読み込み中...</p>
+        <Spinner />
+        <p className="ml-2 text-muted-foreground">読み込み中...</p>
       </div>
     )
   }
@@ -76,47 +82,32 @@ export default function SettingsProfilePage() {
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
       )}
-      {success && (
-        <div className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">{success}</div>
-      )}
 
       <ProfileForm data={formData} onChange={setFormData} />
 
       <Button className="mt-6 w-full" onClick={handleSave} disabled={saving}>
-        {saving ? '保存中...' : '保存'}
+        {saving ? <><InlineSpinner /> 保存中...</> : '保存'}
       </Button>
-
-      {showRecalcDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 max-w-sm rounded-lg bg-background p-6 shadow-lg">
-            <h2 className="mb-2 text-lg font-semibold">目標を再計算しますか？</h2>
-            <p className="mb-4 text-sm text-muted-foreground">
-              身長・体重・活動レベルが変更されました。目標のPFCバランスを再計算することをおすすめします。
-            </p>
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={() => {
-                  setShowRecalcDialog(false)
-                  router.push('/settings/goal')
-                }}
-              >
-                はい
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setShowRecalcDialog(false)
-                  setSuccess('プロフィールを更新しました')
-                }}
-              >
-                いいえ
-              </Button>
-            </div>
-          </div>
-        </div>
+      {success && (
+        <p className="mt-2 text-center text-sm text-green-600">{success}</p>
       )}
+
+      <ConfirmDialog
+        open={showRecalcDialog}
+        title="目標を再計算しますか？"
+        description="身長・体重・活動レベルが変更されました。目標のPFCバランスを再計算することをおすすめします。"
+        confirmLabel="はい"
+        cancelLabel="いいえ"
+        onConfirm={() => {
+          setShowRecalcDialog(false)
+          router.push('/settings/goal')
+        }}
+        onCancel={() => {
+          setShowRecalcDialog(false)
+          toast.success('プロフィールを更新しました')
+          setSuccess('更新済み')
+        }}
+      />
     </div>
   )
 }

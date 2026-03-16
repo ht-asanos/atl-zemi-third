@@ -1,37 +1,56 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
 import { getStapleFoods } from '@/lib/api/foods'
-import { createWeeklyPlan } from '@/lib/api/plans'
+import { createWeeklyPlan, getWeeklyPlans } from '@/lib/api/plans'
 import { StapleCard } from '@/components/staple/staple-card'
 import { Button } from '@/components/ui/button'
+import { InlineSpinner, Spinner } from '@/components/ui/spinner'
+import { StepIndicator } from '@/components/ui/step-indicator'
+import { toast } from 'sonner'
+import { getNextMondayUTC } from '@/lib/date-utils'
+import { Info } from 'lucide-react'
 import type { FoodItem } from '@/types/food'
-
-function getNextMonday(): string {
-  const now = new Date()
-  const utcDay = now.getUTCDay()
-  // 0=Sun, 1=Mon, ..., 6=Sat
-  const daysUntilMonday = utcDay === 0 ? 1 : utcDay === 1 ? 0 : 8 - utcDay
-  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday))
-  return next.toISOString().slice(0, 10)
-}
 
 type PlanMode = 'recipe' | 'classic'
 
-export default function StaplePage() {
+function StapleContent() {
   const { session } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const fromPlans = searchParams.get('from') === 'plans'
+  const fromSettings = searchParams.get('from') === 'settings'
   const [foods, setFoods] = useState<FoodItem[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [mode, setMode] = useState<PlanMode>('recipe')
+  const [currentMode, setCurrentMode] = useState<PlanMode | null>(null)
+  const [currentStaple, setCurrentStaple] = useState<string | null>(null)
 
   useEffect(() => {
     if (!session?.access_token) return
-    getStapleFoods(session.access_token).then(setFoods).catch(() => setError('主食一覧の取得に失敗しました'))
+    const token = session.access_token
+    const startDate = getNextMondayUTC()
+
+    Promise.all([
+      getStapleFoods(token),
+      getWeeklyPlans(token, startDate).catch(() => null),
+    ])
+      .then(([foodsRes, weeklyRes]) => {
+        setFoods(foodsRes)
+        if (!weeklyRes || weeklyRes.plans.length === 0) return
+        const meta = weeklyRes.plans[0]?.plan_meta
+        const detectedMode = meta?.mode === 'classic' ? 'classic' : 'recipe'
+        const detectedStaple = meta?.staple_name ?? null
+        setCurrentMode(detectedMode)
+        setCurrentStaple(detectedStaple)
+        setMode(detectedMode)
+        setSelected(detectedStaple)
+      })
+      .catch(() => setError('主食一覧の取得に失敗しました'))
   }, [session?.access_token])
 
   const handleGenerate = async () => {
@@ -42,13 +61,14 @@ export default function StaplePage() {
 
     try {
       await createWeeklyPlan(session.access_token, {
-        start_date: getNextMonday(),
+        start_date: getNextMondayUTC(),
         mode,
         staple_name: selected || undefined,
       })
       router.push('/plans')
     } catch {
       setError('プラン生成に失敗しました')
+      toast.error('プラン生成に失敗しました')
     } finally {
       setLoading(false)
     }
@@ -56,8 +76,29 @@ export default function StaplePage() {
 
   return (
     <div className="mx-auto max-w-2xl p-6">
+      <StepIndicator currentStep={2} />
+
+      {fromPlans && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+          <Info className="h-4 w-4 shrink-0" />
+          まだプランがありません。モードを選んでプランを作成しましょう
+        </div>
+      )}
+      {fromSettings && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+          <Info className="h-4 w-4 shrink-0" />
+          現在の設定を読み込みました。変更する場合は主食またはモードを選び直して保存してください。
+        </div>
+      )}
+
       <h1 className="mb-2 text-3xl font-bold">プランを生成</h1>
       <p className="mb-6 text-muted-foreground">モードを選んでプランを作成しましょう</p>
+      {(currentMode || currentStaple) && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          現在設定: {currentMode === 'classic' ? '主食モード' : 'レシピモード'}
+          {currentStaple ? ` / 主食: ${currentStaple}` : ''}
+        </p>
+      )}
 
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -124,8 +165,20 @@ export default function StaplePage() {
         disabled={(mode === 'classic' && !selected) || loading}
         onClick={handleGenerate}
       >
-        {loading ? '生成中...' : 'プランを生成'}
+        {loading ? <><InlineSpinner /> 生成中...</> : 'プランを生成'}
       </Button>
     </div>
+  )
+}
+
+export default function StaplePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Spinner />
+      </div>
+    }>
+      <StapleContent />
+    </Suspense>
   )
 }

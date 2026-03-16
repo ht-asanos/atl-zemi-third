@@ -18,7 +18,7 @@ router = APIRouter(prefix="/recipes", tags=["recipes"])
 @router.get("/search", response_model=RecipeSearchResponse)
 async def search_recipes(
     q: str = Query(..., min_length=1),
-    user_id=Depends(get_current_user_id),
+    user_id: UUID = Depends(get_current_user_id),
     supabase: AsyncClient = Depends(get_authenticated_supabase),
 ) -> RecipeSearchResponse:
     """DB キャッシュからレシピを検索する。"""
@@ -39,7 +39,7 @@ async def get_favorites(
 @router.get("/{recipe_id}", response_model=RecipeResponse)
 async def get_recipe(
     recipe_id: UUID,
-    user_id=Depends(get_current_user_id),
+    user_id: UUID = Depends(get_current_user_id),
     supabase: AsyncClient = Depends(get_authenticated_supabase),
 ) -> RecipeResponse:
     """レシピ詳細（栄養情報 + 食材付き）を取得する。"""
@@ -51,7 +51,7 @@ async def get_recipe(
 
 @router.post("/refresh", response_model=RefreshResult)
 async def refresh_recipes(
-    user_id=Depends(get_admin_user_id),
+    user_id: UUID = Depends(get_admin_user_id),
     supabase: AsyncClient = Depends(get_service_supabase),
 ) -> RefreshResult:
     """stale レシピを楽天 API から再取得する（管理者限定）。"""
@@ -104,7 +104,7 @@ async def remove_favorite(
 
 @router.post("/backfill", response_model=BackfillResult)
 async def backfill_recipes(
-    user_id=Depends(get_admin_user_id),
+    user_id: UUID = Depends(get_admin_user_id),
     supabase: AsyncClient = Depends(get_service_supabase),
 ) -> BackfillResult:
     """未マッチ食材を MEXT スクレイピングで補完する（管理者限定）。"""

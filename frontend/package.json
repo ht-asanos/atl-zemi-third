@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "vibe": "NODE_TLS_REJECT_UNAUTHORIZED=0 npx vibe-kanban"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",

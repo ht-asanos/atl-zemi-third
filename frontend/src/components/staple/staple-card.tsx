@@ -26,7 +26,7 @@ export function StapleCard({ food, selected, onSelect }: StapleCardProps) {
       <CardContent className="space-y-2">
         <p className="text-sm text-muted-foreground">{food.serving_unit}</p>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">{food.kcal_per_serving} kcal</Badge>
+          <Badge className="bg-primary/10 text-primary font-medium">{food.kcal_per_serving} kcal</Badge>
           <Badge variant="outline">{food.price_yen}円</Badge>
           {food.cooking_minutes > 0 && (
             <Badge variant="outline">{food.cooking_minutes}分</Badge>

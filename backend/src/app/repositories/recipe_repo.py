@@ -1,13 +1,24 @@
 """recipes テーブル操作"""
 
 import random
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+from app.models.food import NutritionStatus
 from app.models.nutrition import PFCBudget
 from app.models.recipe import Recipe, RecipeIngredient
+from app.utils.text_normalize import contains_normalized
 
 from supabase import AsyncClient
+
+
+@dataclass
+class DinnerSelectionResult:
+    recipes: list[Recipe] = field(default_factory=list)
+    staple_match_count: int = 0
+    total_count: int = 0
+    staple_fallback_used: bool = False
 
 
 def _row_to_recipe(row: dict[str, Any], ingredients: list[dict] | None = None) -> Recipe:
@@ -45,6 +56,9 @@ def _row_to_recipe(row: dict[str, Any], ingredients: list[dict] | None = None) -
         cost_estimate=row.get("cost_estimate"),
         tags=row.get("tags", []),
         is_nutrition_calculated=row.get("is_nutrition_calculated", False),
+        nutrition_status=(
+            NutritionStatus(row["nutrition_status"]) if row.get("nutrition_status") else NutritionStatus.CALCULATED
+        ),
     )
 
 
@@ -127,7 +141,7 @@ async def get_ingredients_for_review(
     # データ取得
     resp = await (
         supabase.table("recipe_ingredients")
-        .select("*, recipes(title, is_nutrition_calculated), mext_foods(name)")
+        .select("*, recipes(title, is_nutrition_calculated), mext_foods(name, display_name)")
         .or_("manual_review_needed.eq.true,mext_food_id.is.null")
         .range(start, end)
         .execute()
@@ -168,7 +182,7 @@ async def get_ingredients_for_recipes(supabase: AsyncClient, recipe_ids: list[UU
     id_strings = [str(rid) for rid in recipe_ids]
     response = await (
         supabase.table("recipe_ingredients")
-        .select("*, mext_foods(name, category_name)")
+        .select("*, mext_foods(name, display_name, category_name)")
         .in_("recipe_id", id_strings)
         .execute()
     )
@@ -184,6 +198,8 @@ async def get_ingredients_for_recipes(supabase: AsyncClient, recipe_ids: list[UU
 
 FAVORITE_BONUS = 1000.0
 TAG_MATCH_BONUS = 500.0
+DEFAULT_DINNER_CANDIDATE_LIMIT = 200
+STAPLE_FILTER_CANDIDATE_LIMIT = 1000
 
 
 def _matches_staple_filter(
@@ -191,16 +207,22 @@ def _matches_staple_filter(
     staple_tags: list[str] | None,
     staple_keywords: list[str] | None,
 ) -> bool:
-    """レシピが主食タグまたはタイトルキーワードにマッチするか判定する。"""
+    """レシピが主食タグまたはタイトルキーワードにマッチするか判定する。
+
+    タグ比較は正規化後の双方向部分一致:
+      recipe.tag が staple_tag を含む OR staple_tag が recipe.tag を含む
+    キーワード比較は正規化後のタイトル部分一致。
+    """
     if staple_tags:
         recipe_tags = recipe.tags or []
-        for tag in recipe_tags:
-            if tag in staple_tags:
-                return True
+        for r_tag in recipe_tags:
+            for s_tag in staple_tags:
+                if contains_normalized(r_tag, s_tag) or contains_normalized(s_tag, r_tag):
+                    return True
     if staple_keywords:
         title = recipe.title or ""
         for kw in staple_keywords:
-            if kw in title:
+            if contains_normalized(title, kw):
                 return True
     return False
 
@@ -213,20 +235,31 @@ async def get_recipes_for_dinner(
     favorite_ids: set[UUID] | None = None,
     staple_tags: list[str] | None = None,
     staple_keywords: list[str] | None = None,
-) -> list[Recipe]:
-    """PFC フィルタ付きでレシピを取得し、protein 差が小さい順にソートして返す。
+) -> DinnerSelectionResult:
+    """3段階選定で夕食レシピを取得する。
 
-    お気に入りレシピは FAVORITE_BONUS 分のスコア優遇を受ける。
-    主食タグ/キーワードマッチレシピは TAG_MATCH_BONUS 分のスコア優遇を受ける。
-    sort_key = abs(protein - target) - (FAVORITE_BONUS if favorite else 0) - (TAG_MATCH_BONUS if staple_match else 0)
+    Stage 1: PFC一致 AND 主食一致 → スコア順で count 件まで
+    Stage 2: PFC一致 AND 主食不一致 → Stage 1 の不足分を補充
+    Stage 3: PFC範囲外 → さらに不足があれば主食一致優先で補充
+
+    staple_tags=None AND staple_keywords=None → Stage 1 空 → 全て Stage 2 → 従来互換。
     """
-    # 栄養計算済みを優先するが、未計算しか無い環境でも夕食レシピが表示されるよう
-    # 候補取得自体は全レシピを対象にする。
-    response = await supabase.table("recipes").select("*").limit(200).execute()
+    candidate_limit = (
+        STAPLE_FILTER_CANDIDATE_LIMIT if (staple_tags or staple_keywords) else DEFAULT_DINNER_CANDIDATE_LIMIT
+    )
+    response = await supabase.table("recipes").select("*").limit(candidate_limit).execute()
     rows = response.data or []
-    candidates: list[tuple[float, Recipe]] = []
     exclude_set = set(exclude_ids) if exclude_ids else set()
     fav_set = favorite_ids or set()
+    has_staple_filter = bool(staple_tags or staple_keywords)
+
+    # 分類: PFC一致+主食一致 / PFC一致+主食不一致 / PFC範囲外(主食一致/不一致)
+    pfc_staple: list[tuple[float, Recipe]] = []  # Stage 1
+    pfc_only: list[tuple[float, Recipe]] = []  # Stage 2
+    out_of_range_staple: list[tuple[float, Recipe]] = []  # Stage 3 (主食一致)
+    out_of_range_non_staple: list[tuple[float, Recipe]] = []  # Stage 3 (主食不一致)
+
+    target = dinner_budget.protein_g
 
     for r in rows:
         recipe = _row_to_recipe(r)
@@ -234,24 +267,68 @@ async def get_recipes_for_dinner(
             continue
         nut = recipe.nutrition_per_serving or {}
         protein = nut.get("protein_g", 0)
-        target = dinner_budget.protein_g
+        fav_bonus = FAVORITE_BONUS if recipe.id in fav_set else 0
+        sort_key = abs(protein - target) - fav_bonus
+
+        staple_matched = has_staple_filter and _matches_staple_filter(recipe, staple_tags, staple_keywords)
         if target * 0.8 <= protein <= target * 1.2:
-            tag_or_title_match = _matches_staple_filter(recipe, staple_tags, staple_keywords)
-            sort_key = (
-                abs(protein - target)
-                - (FAVORITE_BONUS if recipe.id in fav_set else 0)
-                - (TAG_MATCH_BONUS if tag_or_title_match else 0)
+            if staple_matched:
+                pfc_staple.append((sort_key, recipe))
+            else:
+                pfc_only.append((sort_key, recipe))
+        else:
+            if staple_matched:
+                out_of_range_staple.append((sort_key, recipe))
+            else:
+                out_of_range_non_staple.append((sort_key, recipe))
+
+    # Stage 1: PFC + 主食一致
+    pfc_staple.sort(key=lambda x: x[0])
+    selected = [r for _, r in pfc_staple[:count]]
+    staple_match_count = len(selected)
+
+    # 主食指定時: 一致候補が存在するなら「一致レシピのみ」で count 件を満たす
+    # （不足時は一致候補の重複を許容）
+    if has_staple_filter:
+        out_of_range_staple.sort(key=lambda x: x[0])
+        staple_pool = [r for _, r in pfc_staple] + [r for _, r in out_of_range_staple]
+        if staple_pool:
+            selected = staple_pool[:count]
+            i = 0
+            while len(selected) < count:
+                selected.append(staple_pool[i % len(staple_pool)])
+                i += 1
+            staple_match_count = len(selected)
+            return DinnerSelectionResult(
+                recipes=selected,
+                staple_match_count=staple_match_count,
+                total_count=len(selected),
+                staple_fallback_used=False,
             )
-            candidates.append((sort_key, recipe))
 
-    candidates.sort(key=lambda x: x[0])
-    selected = [r for _, r in candidates[:count]]
-
-    # PFC 範囲内の候補が count 件未満 → 範囲外からも補充
+    # Stage 2: PFC のみ一致
     if len(selected) < count:
         selected_ids = {s.id for s in selected}
-        remaining = [_row_to_recipe(r) for r in rows if r["id"] not in selected_ids and r["id"] not in exclude_set]
-        random.shuffle(remaining)
+        pfc_only.sort(key=lambda x: x[0])
+        selected.extend(r for _, r in pfc_only if r.id not in selected_ids)
+        selected = selected[:count]
+
+    # Stage 3: PFC 範囲外（主食一致を先頭に）
+    if len(selected) < count:
+        selected_ids = {s.id for s in selected}
+        out_of_range_staple.sort(key=lambda x: x[0])
+        out_of_range_non_staple.sort(key=lambda x: x[0])
+        remaining = [r for _, r in out_of_range_staple if r.id not in selected_ids] + [
+            r for _, r in out_of_range_non_staple if r.id not in selected_ids
+        ]
+        # 同スコア帯の偏りを避けるため軽くシャッフル
+        if len(remaining) > 1:
+            random.shuffle(remaining)
         selected.extend(remaining[: count - len(selected)])
 
-    return selected
+    return DinnerSelectionResult(
+        recipes=selected,
+        staple_match_count=staple_match_count,
+        total_count=len(selected),
+        staple_fallback_used=staple_match_count < len(selected) if has_staple_filter else False,
+    )

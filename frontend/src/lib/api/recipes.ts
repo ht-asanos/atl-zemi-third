@@ -16,17 +16,7 @@ export async function addFavorite(token: string, recipeId: string): Promise<Favo
 }
 
 export async function removeFavorite(token: string, recipeId: string): Promise<void> {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-  const res = await fetch(`${API_URL}/recipes/${recipeId}/favorite`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  })
-  if (!res.ok) {
-    throw new Error('Failed to remove favorite')
-  }
+  await apiClient<void>(`/recipes/${recipeId}/favorite`, { method: 'DELETE' }, token)
 }
 
 export interface RefreshResult {

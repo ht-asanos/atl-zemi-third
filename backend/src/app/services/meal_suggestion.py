@@ -7,10 +7,11 @@
 import random
 
 from app.data.food_master import FOOD_MASTER
-from app.models.food import FoodCategory, FoodItem, MealSuggestion, MealType
+from app.models.food import FoodCategory, FoodItem, MealSuggestion, MealType, NutritionStatus
 from app.models.nutrition import PFCBudget
 from app.models.recipe import Recipe
 from app.repositories import recipe_repo
+from app.services.nutrition_fallback import get_fallback_nutrition
 
 from supabase import AsyncClient
 
@@ -253,8 +254,32 @@ def _make_lunch() -> MealSuggestion:
 
 
 def _make_dinner_from_recipe(recipe: Recipe) -> MealSuggestion:
-    """Recipe → MealSuggestion。meal_type=dinner。"""
-    nut = recipe.nutrition_per_serving or {}
+    """Recipe → MealSuggestion。meal_type=dinner。
+
+    nutrition_status を recipe から伝搬する。
+    nutrition_per_serving が None の場合（fallback 未実行の旧データ）は
+    get_fallback_nutrition() でランタイム補完する。
+    """
+    nut = recipe.nutrition_per_serving
+    meal_status = NutritionStatus.CALCULATED
+    meal_warning: str | None = None
+
+    if nut is None:
+        # fallback 未実行の旧データ → ランタイム補完
+        nut = get_fallback_nutrition(recipe)
+        meal_status = NutritionStatus.ESTIMATED
+        meal_warning = "推定値です"
+    elif recipe.nutrition_status == NutritionStatus.ESTIMATED:
+        meal_status = NutritionStatus.ESTIMATED
+        meal_warning = "一部食材のみで推定した値です"
+    elif recipe.nutrition_status == NutritionStatus.FAILED:
+        # fallback 適用済みの場合は ESTIMATED になっているはず
+        # ここに来るのは fallback 未適用の旧データのみ
+        nut = get_fallback_nutrition(recipe)
+        meal_status = NutritionStatus.ESTIMATED
+        meal_warning = "推定値です"
+    # else: CALCULATED → デフォルトのまま
+
     return MealSuggestion(
         meal_type=MealType.DINNER,
         staple=FoodItem(
@@ -289,6 +314,8 @@ def _make_dinner_from_recipe(recipe: Recipe) -> MealSuggestion:
                 "carbs_g": round(nut.get("carbs_g", 0), 1),
             },
         },
+        nutrition_status=meal_status,
+        nutrition_warning=meal_warning,
     )
 
 

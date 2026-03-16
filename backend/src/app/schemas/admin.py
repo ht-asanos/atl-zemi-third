@@ -32,6 +32,7 @@ class MextFoodSearchItem(BaseModel):
     id: UUID
     mext_food_id: str
     name: str
+    display_name: str | None = None
     category_name: str
     kcal_per_100g: float
     protein_g_per_100g: float

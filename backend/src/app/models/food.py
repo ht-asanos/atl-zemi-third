@@ -17,6 +17,12 @@ class MealType(StrEnum):
     DINNER = "dinner"
 
 
+class NutritionStatus(StrEnum):
+    CALCULATED = "calculated"
+    ESTIMATED = "estimated"
+    FAILED = "failed"
+
+
 class FoodItem(BaseModel):
     name: str
     category: FoodCategory
@@ -33,6 +39,7 @@ class MextFood(BaseModel):
     id: UUID | None = None
     mext_food_id: str
     name: str
+    display_name: str | None = None
     category_code: str
     category_name: str
     kcal_per_100g: float
@@ -58,3 +65,5 @@ class MealSuggestion(BaseModel):
     total_price_yen: int
     total_cooking_minutes: int
     recipe: Any | None = None
+    nutrition_status: NutritionStatus = NutritionStatus.CALCULATED
+    nutrition_warning: str | None = None

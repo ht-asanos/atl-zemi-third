@@ -48,6 +48,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <DropdownItem onClick={() => router.push('/settings/goal')}>
                 目標変更
               </DropdownItem>
+              <DropdownItem onClick={() => router.push('/staple?from=settings')}>
+                プラン生成設定
+              </DropdownItem>
               <DropdownSeparator />
               <DropdownItem variant="destructive" onClick={handleSignOut}>
                 ログアウト

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     rakuten_app_id: str = ""
     rakuten_access_key: str = ""
     supabase_service_role_key: str = ""
+    google_api_key: str = ""
     admin_user_ids: str = ""  # カンマ区切り UUID
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}

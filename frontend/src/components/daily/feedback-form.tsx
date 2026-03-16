@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { InlineSpinner } from '@/components/ui/spinner'
 
 interface FeedbackFormProps {
   onSubmit: (text: string) => void
@@ -32,7 +33,7 @@ export function FeedbackForm({ onSubmit, isLoading }: FeedbackFormProps) {
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{text.length}/1000</span>
         <Button onClick={handleSubmit} disabled={isLoading || !text.trim()} size="sm">
-          {isLoading ? '送信中...' : 'フィードバック送信'}
+          {isLoading ? <><InlineSpinner /> 送信中...</> : 'フィードバック送信'}
         </Button>
       </div>
     </div>

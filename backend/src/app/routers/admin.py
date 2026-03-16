@@ -24,7 +24,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def list_review_ingredients(
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
-    user_id=Depends(get_admin_user_id),
+    user_id: UUID = Depends(get_admin_user_id),
     supabase: AsyncClient = Depends(get_service_supabase),
 ) -> ReviewListResponse:
     """レビュー対象の食材一覧を取得する。"""
@@ -42,7 +42,7 @@ async def list_review_ingredients(
                 ingredient_name=row["ingredient_name"],
                 amount_text=row.get("amount_text"),
                 current_mext_food_id=row.get("mext_food_id"),
-                current_mext_food_name=mext_data.get("name"),
+                current_mext_food_name=mext_data.get("display_name") or mext_data.get("name"),
                 match_confidence=row.get("match_confidence"),
                 manual_review_needed=row.get("manual_review_needed", False),
                 is_nutrition_calculated=recipe_data.get("is_nutrition_calculated", False),
@@ -55,7 +55,7 @@ async def list_review_ingredients(
 @router.get("/mext-foods/search", response_model=MextFoodSearchResponse)
 async def search_mext_foods(
     q: str = Query(..., min_length=1),
-    user_id=Depends(get_admin_user_id),
+    user_id: UUID = Depends(get_admin_user_id),
     supabase: AsyncClient = Depends(get_service_supabase),
 ) -> MextFoodSearchResponse:
     """MEXT 食品をキーワード検索する。"""
@@ -65,6 +65,7 @@ async def search_mext_foods(
             id=f.id,
             mext_food_id=f.mext_food_id,
             name=f.name,
+            display_name=f.display_name,
             category_name=f.category_name,
             kcal_per_100g=f.kcal_per_100g,
             protein_g_per_100g=f.protein_g_per_100g,
@@ -79,7 +80,7 @@ async def search_mext_foods(
 async def update_review_ingredient(
     ingredient_id: UUID,
     body: ReviewUpdateRequest,
-    user_id=Depends(get_admin_user_id),
+    user_id: UUID = Depends(get_admin_user_id),
     supabase: AsyncClient = Depends(get_service_supabase),
 ) -> dict:
     """食材マッチを更新・承認・却下する。"""
@@ -102,6 +103,6 @@ async def update_review_ingredient(
         )
 
     # 栄養再計算
-    await calculate_recipe_nutrition(supabase, recipe_id)
+    result = await calculate_recipe_nutrition(supabase, recipe_id)
 
-    return {"ok": True, "recipe_id": str(recipe_id)}
+    return {"ok": True, "recipe_id": str(recipe_id), "nutrition_status": result.status.value}

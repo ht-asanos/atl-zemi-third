@@ -78,7 +78,7 @@ async def test_fetch_category_list_uses_access_key_in_query_param():
     assert len(rows) == 1
     assert captured["params"]["applicationId"] == "app_id_123"
     assert captured["params"]["accessKey"] == "access_key_456"
-    assert captured["headers"] is None
+    assert captured["headers"]["Authorization"] == "Bearer access_key_456"
 
 
 @pytest.mark.asyncio
@@ -102,4 +102,4 @@ async def test_fetch_category_ranking_uses_access_key_in_query_param():
     assert captured["params"]["applicationId"] == "app_id_123"
     assert captured["params"]["accessKey"] == "access_key_456"
     assert captured["params"]["categoryId"] == "10-275"
-    assert captured["headers"] is None
+    assert captured["headers"]["Authorization"] == "Bearer access_key_456"

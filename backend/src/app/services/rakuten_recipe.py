@@ -6,6 +6,7 @@ API リクエスト中には呼ばない。data_loader 経由のみ。
 
 import asyncio
 import logging
+from collections.abc import Iterable
 
 import httpx
 
@@ -17,11 +18,22 @@ RETRY_BASE_SECONDS = 2.0
 logger = logging.getLogger(__name__)
 
 
+def _auth_params_and_headers(app_id: str, access_key: str) -> tuple[dict[str, str], dict[str, str]]:
+    """楽天API共通の認証パラメータ/ヘッダーを返す。"""
+    params = {
+        "applicationId": app_id,
+        "accessKey": access_key,
+        "format": "json",
+    }
+    headers = {"Authorization": f"Bearer {access_key}"}
+    return params, headers
+
+
 async def fetch_category_list(client: httpx.AsyncClient, app_id: str, access_key: str) -> list[dict]:
     """楽天レシピのカテゴリ一覧を取得する。"""
     url = f"{RAKUTEN_API_BASE}/CategoryList/20170426"
-    params = {"applicationId": app_id, "accessKey": access_key, "format": "json"}
-    resp = await client.get(url, params=params)
+    params, headers = _auth_params_and_headers(app_id, access_key)
+    resp = await client.get(url, params=params, headers=headers)
     resp.raise_for_status()
     data = resp.json()
     result = data.get("result", {})
@@ -36,15 +48,11 @@ async def fetch_category_ranking(
 ) -> list[dict]:
     """カテゴリ別ランキングレシピを取得する。"""
     url = f"{RAKUTEN_API_BASE}/CategoryRanking/20170426"
-    params = {
-        "applicationId": app_id,
-        "accessKey": access_key,
-        "categoryId": category_id,
-        "format": "json",
-    }
+    params, headers = _auth_params_and_headers(app_id, access_key)
+    params["categoryId"] = category_id
     resp: httpx.Response | None = None
     for attempt in range(MAX_RETRIES_ON_429 + 1):
-        resp = await client.get(url, params=params)
+        resp = await client.get(url, params=params, headers=headers)
         if resp.status_code != 429:
             break
 
@@ -63,6 +71,76 @@ async def fetch_category_ranking(
     resp.raise_for_status()
     data = resp.json()
     return data.get("result", [])
+
+
+def build_category_index(categories: list[dict]) -> list[dict]:
+    """カテゴリ一覧（large/medium/small混在）から検索用インデックスを作る。"""
+    # 仕様: large は parent なし、medium は parent=large_id、small は parent=medium_id
+    large_ids: set[str] = set()
+    medium_parent: dict[str, str] = {}  # medium_id -> large_id
+    indexed: list[dict] = []
+
+    normalized: list[tuple[str, str, str]] = []  # (cid, cname, parent)
+    for c in categories:
+        cid = str(c.get("categoryId", "")).strip()
+        cname = str(c.get("categoryName", "")).strip()
+        parent = str(c.get("parentCategoryId", "")).strip()
+        if not cid or not cname:
+            continue
+        normalized.append((cid, cname, parent))
+
+    for cid, _, parent in normalized:
+        if not parent:
+            large_ids.add(cid)
+
+    for cid, cname, parent in normalized:
+        if not parent:
+            indexed.append({"category_id": cid, "category_name": cname, "level": "large"})
+        elif parent in large_ids:
+            medium_parent[cid] = parent
+            indexed.append({"category_id": f"{parent}-{cid}", "category_name": cname, "level": "medium"})
+
+    for cid, cname, parent in normalized:
+        if parent in medium_parent:
+            large_id = medium_parent[parent]
+            indexed.append({"category_id": f"{large_id}-{parent}-{cid}", "category_name": cname, "level": "small"})
+
+    return indexed
+
+
+def find_category_ids_by_keywords(
+    category_index: Iterable[dict],
+    keywords: list[str],
+    max_categories: int = 30,
+) -> list[str]:
+    """カテゴリ名にキーワードを含む category_id を抽出する。"""
+    keys = [k.strip() for k in keywords if k and k.strip()]
+    if not keys:
+        return []
+
+    level_rank = {"small": 0, "medium": 1, "large": 2, "unknown": 3}
+    matches: list[tuple[int, str]] = []
+
+    for c in category_index:
+        name = str(c.get("category_name", ""))
+        cid = str(c.get("category_id", ""))
+        level = str(c.get("level", "unknown"))
+        if not cid or not name:
+            continue
+        if any(k in name for k in keys):
+            matches.append((level_rank.get(level, 99), cid))
+
+    matches.sort(key=lambda x: (x[0], x[1]))
+    out: list[str] = []
+    seen: set[str] = set()
+    for _, cid in matches:
+        if cid in seen:
+            continue
+        seen.add(cid)
+        out.append(cid)
+        if len(out) >= max_categories:
+            break
+    return out
 
 
 def parse_ranking_recipes(raw_recipes: list[dict]) -> list[dict]:
@@ -126,7 +204,10 @@ async def fetch_multiple_categories(
     """複数カテゴリのランキングレシピを順番に取得する。"""
     all_recipes: list[dict] = []
     for cat_id in category_ids:
-        raw = await fetch_category_ranking(client, app_id, access_key, cat_id)
-        all_recipes.extend(parse_ranking_recipes(raw))
+        try:
+            raw = await fetch_category_ranking(client, app_id, access_key, cat_id)
+            all_recipes.extend(parse_ranking_recipes(raw))
+        except Exception as e:
+            logger.warning("skip category %s due to error: %s", cat_id, e)
         await asyncio.sleep(REQUEST_INTERVAL)
     return all_recipes

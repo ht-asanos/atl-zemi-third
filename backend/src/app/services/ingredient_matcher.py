@@ -4,9 +4,11 @@
 """
 
 import re
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from app.models.food import NutritionStatus
 from app.repositories import mext_food_repo
 from postgrest.exceptions import APIError
 
@@ -175,11 +177,19 @@ async def match_recipe_ingredients(
     return results
 
 
-async def calculate_recipe_nutrition(supabase: AsyncClient, recipe_id: UUID) -> dict | None:
+@dataclass
+class NutritionResult:
+    nutrition: dict | None
+    status: NutritionStatus
+    matched_count: int
+    total_count: int
+
+
+async def calculate_recipe_nutrition(supabase: AsyncClient, recipe_id: UUID) -> NutritionResult:
     """レシピの栄養価を計算する。
 
     confidence >= CONFIDENCE_AUTO_MATCH かつ amount_g が設定されている食材のみ集計。
-    全食材が計算に使えない場合は None を返す。
+    全食材が計算に使えない場合は FAILED を返す。
     """
     resp = await (
         supabase.table("recipe_ingredients").select("*, mext_foods(*)").eq("recipe_id", str(recipe_id)).execute()
@@ -192,6 +202,8 @@ async def calculate_recipe_nutrition(supabase: AsyncClient, recipe_id: UUID) -> 
     total_carbs = 0.0
     has_valid = False
     all_matched = True
+    matched_count = 0
+    total_count = len(rows)
 
     for row in rows:
         confidence = row.get("match_confidence") or 0.0
@@ -234,32 +246,42 @@ async def calculate_recipe_nutrition(supabase: AsyncClient, recipe_id: UUID) -> 
             continue
 
         has_valid = True
+        matched_count += 1
         total_kcal += ingredient_kcal
         total_protein += ingredient_protein or 0.0
         total_fat += ingredient_fat or 0.0
         total_carbs += ingredient_carbs or 0.0
 
+    # Determine status
     if not has_valid:
-        return None
+        nutrition_status = NutritionStatus.FAILED
+    elif all_matched:
+        nutrition_status = NutritionStatus.CALCULATED
+    else:
+        nutrition_status = NutritionStatus.ESTIMATED
 
-    nutrition = {
-        "kcal": round(total_kcal, 1),
-        "protein_g": round(total_protein, 1),
-        "fat_g": round(total_fat, 1),
-        "carbs_g": round(total_carbs, 1),
-    }
+    nutrition = None
+    if has_valid:
+        nutrition = {
+            "kcal": round(total_kcal, 1),
+            "protein_g": round(total_protein, 1),
+            "fat_g": round(total_fat, 1),
+            "carbs_g": round(total_carbs, 1),
+        }
 
     # レシピの栄養情報を更新
-    await (
-        supabase.table("recipes")
-        .update(
-            {
-                "nutrition_per_serving": nutrition,
-                "is_nutrition_calculated": all_matched,
-            }
-        )
-        .eq("id", str(recipe_id))
-        .execute()
-    )
+    update_data: dict[str, Any] = {
+        "is_nutrition_calculated": all_matched,
+        "nutrition_status": nutrition_status.value,
+    }
+    if nutrition is not None:
+        update_data["nutrition_per_serving"] = nutrition
 
-    return nutrition
+    await supabase.table("recipes").update(update_data).eq("id", str(recipe_id)).execute()
+
+    return NutritionResult(
+        nutrition=nutrition,
+        status=nutrition_status,
+        matched_count=matched_count,
+        total_count=total_count,
+    )

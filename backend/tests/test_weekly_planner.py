@@ -9,6 +9,7 @@ from app.data.food_master import FOOD_MASTER
 from app.models.food import FoodCategory, MealType
 from app.models.nutrition import PFCBudget
 from app.models.recipe import Recipe
+from app.repositories.recipe_repo import DinnerSelectionResult
 from app.services.weekly_planner import generate_weekly_plan, generate_weekly_plan_v3
 
 
@@ -22,6 +23,15 @@ def _get_proteins():
 
 def _get_bulks():
     return [f for f in FOOD_MASTER if f.category == FoodCategory.BULK]
+
+
+def _make_selection_result(recipes, staple_match_count=0):
+    return DinnerSelectionResult(
+        recipes=recipes,
+        staple_match_count=staple_match_count,
+        total_count=len(recipes),
+        staple_fallback_used=staple_match_count < len(recipes) if staple_match_count > 0 else False,
+    )
 
 
 class TestGenerateWeeklyPlan:
@@ -135,8 +145,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_generates_seven_days(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, metrics = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="diet",
@@ -148,8 +158,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_each_day_has_three_meals(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="diet",
@@ -162,8 +172,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_meal_types_are_correct(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="diet",
@@ -178,8 +188,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_dinner_recipes_are_unique(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="diet",
@@ -192,8 +202,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_dates_are_consecutive(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="diet",
@@ -207,8 +217,8 @@ class TestGenerateWeeklyPlanV3:
         """レシピが7件未満でもフォールバックで7日分生成される"""
         mock_recipes = self._make_mock_recipes(3)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="diet",
@@ -225,8 +235,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_bouldering_has_rest_days(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="bouldering",
@@ -245,8 +255,8 @@ class TestGenerateWeeklyPlanV3:
     async def test_bouldering_adjustment_scale_and_forearm_protection(self) -> None:
         mock_recipes = self._make_mock_recipes(7)
         with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
-            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=mock_recipes)
-            plans = await generate_weekly_plan_v3(
+            mock_repo.get_recipes_for_dinner = AsyncMock(return_value=_make_selection_result(mock_recipes))
+            plans, _ = await generate_weekly_plan_v3(
                 start_date=date(2026, 3, 9),
                 pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
                 goal_type="bouldering",
@@ -261,3 +271,22 @@ class TestGenerateWeeklyPlanV3:
             for ex in day.exercises:
                 assert ex.sets >= 1
                 assert ex.muscle_group.value != "forearms"
+
+    @pytest.mark.asyncio
+    async def test_selection_metrics_propagated(self) -> None:
+        """selection_metrics が戻り値に含まれること。"""
+        mock_recipes = self._make_mock_recipes(7)
+        with patch("app.services.weekly_planner.recipe_repo") as mock_repo:
+            mock_repo.get_recipes_for_dinner = AsyncMock(
+                return_value=_make_selection_result(mock_recipes, staple_match_count=5)
+            )
+            _, metrics = await generate_weekly_plan_v3(
+                start_date=date(2026, 3, 9),
+                pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
+                goal_type="diet",
+                supabase=AsyncMock(),
+            )
+
+        assert metrics["staple_match_count"] == 5
+        assert metrics["dinner_total_count"] == 7
+        assert metrics["staple_fallback_used"] is True

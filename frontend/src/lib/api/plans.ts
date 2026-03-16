@@ -1,5 +1,13 @@
 import { apiClient } from './client'
-import type { DailyPlanResponse, PatchMealRequest, ShoppingListResponse, WeeklyPlanRequest, WeeklyPlanResponse } from '@/types/plan'
+import type {
+  DailyPlanResponse,
+  PatchMealRequest,
+  SetShoppingListCheckRequest,
+  ShoppingListChecksResponse,
+  ShoppingListResponse,
+  WeeklyPlanRequest,
+  WeeklyPlanResponse,
+} from '@/types/plan'
 
 export async function createWeeklyPlan(
   token: string,
@@ -29,6 +37,31 @@ export async function getShoppingList(
   return apiClient<ShoppingListResponse>(
     `/plans/weekly/shopping-list?start_date=${startDate}`,
     {},
+    token
+  )
+}
+
+export async function getShoppingListChecks(
+  token: string,
+  startDate: string
+): Promise<ShoppingListChecksResponse> {
+  return apiClient<ShoppingListChecksResponse>(
+    `/plans/weekly/shopping-list/checks?start_date=${startDate}`,
+    {},
+    token
+  )
+}
+
+export async function setShoppingListCheck(
+  token: string,
+  data: SetShoppingListCheckRequest
+): Promise<void> {
+  await apiClient<void>(
+    '/plans/weekly/shopping-list/checks',
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    },
     token
   )
 }

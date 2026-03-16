@@ -3,23 +3,27 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
-import { getWeeklyPlans, getShoppingList, patchMeal, patchRecipe, createWeeklyPlan } from '@/lib/api/plans'
+import {
+  getWeeklyPlans,
+  getShoppingList,
+  patchMeal,
+  patchRecipe,
+  createWeeklyPlan,
+  getShoppingListChecks,
+  setShoppingListCheck,
+} from '@/lib/api/plans'
 import { getStapleFoods } from '@/lib/api/foods'
 import { getFavorites, addFavorite, removeFavorite } from '@/lib/api/recipes'
 import { WeeklyPlanView } from '@/components/plans/weekly-plan-view'
 import { ShoppingList } from '@/components/plans/shopping-list'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Spinner, InlineSpinner } from '@/components/ui/spinner'
+import { toast } from 'sonner'
 import { ApiError } from '@/lib/api/client'
+import { getNextMondayUTC } from '@/lib/date-utils'
 import type { DailyPlanResponse, ShoppingListResponse } from '@/types/plan'
 import type { FoodItem } from '@/types/food'
-
-function getCurrentMonday(): string {
-  const now = new Date()
-  const utcDay = now.getUTCDay()
-  const daysUntilMonday = utcDay === 0 ? 1 : utcDay === 1 ? 0 : 8 - utcDay
-  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + daysUntilMonday))
-  return next.toISOString().slice(0, 10)
-}
 
 export default function PlansContent() {
   const { session } = useAuth()
@@ -31,6 +35,8 @@ export default function PlansContent() {
   const [activeTab, setActiveTab] = useState<'plan' | 'shopping'>('plan')
   const [shoppingList, setShoppingList] = useState<ShoppingListResponse | null>(null)
   const [shoppingLoading, setShoppingLoading] = useState(false)
+  const [checkedGroupIds, setCheckedGroupIds] = useState<Set<string>>(new Set())
+  const [updatingGroupIds, setUpdatingGroupIds] = useState<Set<string>>(new Set())
   const [favoriteRecipeIds, setFavoriteRecipeIds] = useState<Set<string>>(new Set())
   const [regenerating, setRegenerating] = useState(false)
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false)
@@ -44,7 +50,7 @@ export default function PlansContent() {
     if (!session?.access_token) return
 
     const token = session.access_token
-    const startDate = getCurrentMonday()
+    const startDate = getNextMondayUTC()
 
     Promise.all([
       getWeeklyPlans(token, startDate),
@@ -53,7 +59,7 @@ export default function PlansContent() {
     ])
       .then(([weeklyRes, staplesRes, favRes]) => {
         if (weeklyRes.plans.length === 0) {
-          router.push('/staple')
+          router.push('/staple?from=plans')
           return
         }
         setPlans(weeklyRes.plans)
@@ -77,12 +83,12 @@ export default function PlansContent() {
       setPlans((prev) => prev.map((p) => (p.id === planId ? updated : p)))
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
-        const startDate = getCurrentMonday()
+        const startDate = getNextMondayUTC()
         const weeklyRes = await getWeeklyPlans(session.access_token, startDate)
         setPlans(weeklyRes.plans)
-        setError('プランが更新されました。もう一度お試しください。')
+        toast.error('プランが更新されました。もう一度お試しください。')
       } else {
-        setError('レシピの変更に失敗しました')
+        toast.error('レシピの変更に失敗しました')
       }
     }
   }, [session?.access_token])
@@ -102,17 +108,21 @@ export default function PlansContent() {
         setFavoriteRecipeIds((prev) => new Set(prev).add(recipeId))
       }
     } catch {
-      setError('お気に入りの更新に失敗しました')
+      toast.error('お気に入りの更新に失敗しました')
     }
   }, [session?.access_token, favoriteRecipeIds])
 
   const handleShowShoppingList = async () => {
     setActiveTab('shopping')
-    if (shoppingList) return
     if (!session?.access_token) return
     setShoppingLoading(true)
     try {
-      const data = await getShoppingList(session.access_token, getCurrentMonday())
+      const startDate = getNextMondayUTC()
+      const [checks, data] = await Promise.all([
+        getShoppingListChecks(session.access_token, startDate),
+        getShoppingList(session.access_token, startDate),
+      ])
+      setCheckedGroupIds(new Set(checks.checked_group_ids))
       setShoppingList(data)
     } catch {
       setError('買い物リストの取得に失敗しました')
@@ -120,6 +130,48 @@ export default function PlansContent() {
       setShoppingLoading(false)
     }
   }
+
+  const handleToggleShoppingCheck = useCallback(async (groupId: string, checked: boolean) => {
+    if (!session?.access_token) return
+
+    setUpdatingGroupIds((prev) => new Set(prev).add(groupId))
+    setCheckedGroupIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        next.add(groupId)
+      } else {
+        next.delete(groupId)
+      }
+      return next
+    })
+
+    try {
+      await setShoppingListCheck(session.access_token, {
+        start_date: getNextMondayUTC(),
+        group_id: groupId,
+        checked,
+      })
+      const data = await getShoppingList(session.access_token, getNextMondayUTC())
+      setShoppingList(data)
+    } catch {
+      setCheckedGroupIds((prev) => {
+        const rollback = new Set(prev)
+        if (checked) {
+          rollback.delete(groupId)
+        } else {
+          rollback.add(groupId)
+        }
+        return rollback
+      })
+      toast.error('買い物チェックの更新に失敗しました')
+    } finally {
+      setUpdatingGroupIds((prev) => {
+        const next = new Set(prev)
+        next.delete(groupId)
+        return next
+      })
+    }
+  }, [session?.access_token])
 
   const handleRegenerate = async () => {
     if (!session?.access_token) return
@@ -134,13 +186,15 @@ export default function PlansContent() {
 
     try {
       const result = await createWeeklyPlan(session.access_token, {
-        start_date: getCurrentMonday(),
+        start_date: getNextMondayUTC(),
         mode: mode as 'classic' | 'recipe',
         staple_name: stapleName,
       })
       setPlans(result.plans)
       setShoppingList(null)
+      toast.success('プランを再生成しました')
     } catch {
+      toast.error('プランの再生成に失敗しました')
       setError('プランの再生成に失敗しました')
     } finally {
       setRegenerating(false)
@@ -150,7 +204,8 @@ export default function PlansContent() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <p className="text-muted-foreground">読み込み中...</p>
+        <Spinner />
+        <p className="ml-2 text-muted-foreground">読み込み中...</p>
       </div>
     )
   }
@@ -165,7 +220,7 @@ export default function PlansContent() {
           onClick={() => setShowRegenerateDialog(true)}
           disabled={regenerating}
         >
-          {regenerating ? '再生成中...' : 'プランを再生成'}
+          {regenerating ? <><InlineSpinner /> 再生成中...</> : 'プランを再生成'}
         </Button>
       </div>
 
@@ -202,35 +257,24 @@ export default function PlansContent() {
           favoriteRecipeIds={favoriteRecipeIds}
         />
       ) : (
-        <ShoppingList
+      <ShoppingList
           data={shoppingList}
           loading={shoppingLoading}
           noRecipeIds={!hasRecipeIds}
+          checkedGroupIds={checkedGroupIds}
+          onToggleGroupChecked={handleToggleShoppingCheck}
+          updatingGroupIds={updatingGroupIds}
         />
       )}
 
-      {showRegenerateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 max-w-sm rounded-lg bg-background p-6 shadow-lg">
-            <h2 className="mb-2 text-lg font-semibold">プランを再生成</h2>
-            <p className="mb-4 text-sm text-muted-foreground">
-              現在のプランを上書きしますか？この操作は元に戻せません。
-            </p>
-            <div className="flex gap-2">
-              <Button className="flex-1" onClick={handleRegenerate}>
-                再生成する
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => setShowRegenerateDialog(false)}
-              >
-                キャンセル
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showRegenerateDialog}
+        title="プランを再生成"
+        description="現在のプランを上書きしますか？この操作は元に戻せません。"
+        confirmLabel="再生成する"
+        onConfirm={handleRegenerate}
+        onCancel={() => setShowRegenerateDialog(false)}
+      />
     </div>
   )
 }
