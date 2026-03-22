@@ -1,9 +1,10 @@
-"""管理者用エンドポイント（食材マッチングレビュー）"""
+"""管理者用エンドポイント — 食材マッチングレビュー"""
 
 from uuid import UUID
 
 from app.dependencies.auth import get_admin_user_id
 from app.dependencies.supabase_client import get_service_supabase
+from app.exceptions import AppException, ErrorCode
 from app.repositories import mext_food_repo, recipe_repo
 from app.schemas.admin import (
     MextFoodSearchItem,
@@ -13,7 +14,7 @@ from app.schemas.admin import (
     ReviewUpdateRequest,
 )
 from app.services.ingredient_matcher import calculate_recipe_nutrition
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
 from supabase import AsyncClient
 
@@ -97,10 +98,7 @@ async def update_review_ingredient(
         supabase, ingredient_id, mext_food_id, confidence, review_needed
     )
     if recipe_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ingredient not found",
-        )
+        raise AppException(ErrorCode.VALIDATION_ERROR, status.HTTP_404_NOT_FOUND, "Ingredient not found")
 
     # 栄養再計算
     result = await calculate_recipe_nutrition(supabase, recipe_id)

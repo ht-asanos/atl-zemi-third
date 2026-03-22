@@ -299,3 +299,30 @@ async def test_checked_group_is_marked_checked():
 
     assert len(result.items) == 3
     assert all(item.checked is True for item in result.items)
+
+
+@pytest.mark.asyncio
+async def test_noise_token_ingredient_is_ignored():
+    """材料ではないノイズトークン（or など）は除外されること。"""
+    supabase = AsyncMock()
+    user_id = uuid4()
+    plans = [_make_plan("2026-03-09", RECIPE_ID_1)]
+    ingredients = [
+        {
+            "ingredient_name": "or",
+            "mext_food_id": None,
+            "amount_g": None,
+            "amount_text": None,
+            "recipe_id": str(RECIPE_ID_1),
+            "recipe_title": "レシピA",
+            "mext_foods": None,
+        }
+    ]
+
+    with (
+        patch("app.services.shopping_list.plan_repo.get_weekly_plans", return_value=plans),
+        patch("app.services.shopping_list.recipe_repo.get_ingredients_for_recipes", return_value=ingredients),
+    ):
+        result = await generate_shopping_list(supabase, user_id, date(2026, 3, 9))
+
+    assert result.items == []

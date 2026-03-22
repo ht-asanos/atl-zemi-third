@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/providers/auth-provider'
 import { getWeeklyPlans } from '@/lib/api/plans'
+import { getMyGoal } from '@/lib/api/goals'
 import {
   createMealLog,
   createWorkoutLog,
@@ -14,6 +15,7 @@ import { MealLogCard } from '@/components/daily/meal-log-card'
 import { WorkoutLogCard } from '@/components/daily/workout-log-card'
 import { FeedbackForm } from '@/components/daily/feedback-form'
 import { AdaptationResult } from '@/components/daily/adaptation-result'
+import { DailyNutritionSummary } from '@/components/plans/daily-nutrition-summary'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Spinner, InlineSpinner } from '@/components/ui/spinner'
@@ -22,7 +24,9 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 import type { DailyPlanResponse, Exercise } from '@/types/plan'
 import type { AdaptationResponse } from '@/types/log'
+import type { GoalResponse } from '@/types/goal'
 import { ApiError } from '@/lib/api/client'
+import { getErrorInfo } from '@/lib/errors'
 import { cn } from '@/lib/utils'
 import { getTodayLocal, getMondayOfDateLocal } from '@/lib/date-utils'
 
@@ -43,6 +47,8 @@ interface WorkoutLogState {
 export default function DailyContent() {
   const { session } = useAuth()
   const [todayPlan, setTodayPlan] = useState<DailyPlanResponse | null>(null)
+  const [hasWeeklyPlan, setHasWeeklyPlan] = useState(false)
+  const [goal, setGoal] = useState<GoalResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -70,12 +76,15 @@ export default function DailyContent() {
 
     try {
       const monday = getMondayOfDateLocal(today)
-      const [weeklyRes, mealRes, workoutRes] = await Promise.all([
+      const [weeklyRes, mealRes, workoutRes, goalRes] = await Promise.all([
         getWeeklyPlans(token, monday),
         getMealLogs(token, today),
         getWorkoutLogs(token, today),
+        getMyGoal(token),
       ])
+      setGoal(goalRes)
 
+      setHasWeeklyPlan(weeklyRes.plans.length > 0)
       const plan = weeklyRes.plans.find((p) => p.plan_date === today) ?? null
       setTodayPlan(plan)
 
@@ -175,12 +184,13 @@ export default function DailyContent() {
       }
       toast.success('フィードバックを送信しました')
     } catch (e) {
+      const info = e instanceof ApiError ? getErrorInfo(e.errorCode) : getErrorInfo()
       if (e instanceof ApiError && e.status === 409) {
         setError('他の操作と競合しました。リロードしてください。')
         toast.error('他の操作と競合しました')
       } else {
-        setError('フィードバックの送信に失敗しました')
-        toast.error('フィードバックの送信に失敗しました')
+        setError(info.message)
+        toast.error(info.message)
       }
     } finally {
       setFeedbackLoading(false)
@@ -199,16 +209,43 @@ export default function DailyContent() {
   if (!todayPlan) {
     return (
       <div className="mx-auto max-w-3xl p-6">
-        <h1 className="mb-4 text-3xl font-bold">Today</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Today - {today}</h1>
+          <Link href="/plans" className="text-sm text-muted-foreground hover:text-foreground">
+            &larr; 週間プランに戻る
+          </Link>
+        </div>
         <div className="flex flex-col items-center gap-4 rounded-md border p-8 text-center">
           <CalendarX2 className="h-12 w-12 text-muted-foreground" />
-          <p className="text-muted-foreground">今日のプランがありません。先に週間プランを作成してください。</p>
-          <Link
-            href="/plans"
-            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
-          >
-            週間プランを確認する
-          </Link>
+          {hasWeeklyPlan ? (
+            <>
+              <p className="text-muted-foreground">今日({today})はプランに含まれていません</p>
+              <Link
+                href="/plans"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
+              >
+                週間プランを確認する
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className="text-muted-foreground">今週のプランがまだ作成されていません</p>
+              <div className="flex gap-3">
+                <Link
+                  href="/staple"
+                  className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
+                >
+                  プランを作成する
+                </Link>
+                <Link
+                  href="/plans"
+                  className="inline-flex h-10 items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  週間プランを確認する
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
@@ -219,9 +256,18 @@ export default function DailyContent() {
       ? (todayPlan.workout_plan as { exercises: Exercise[] }).exercises
       : []
 
+  // 今日の夕食レシピ情報
+  const dinnerMeal = todayPlan.meal_plan.find((m) => m.meal_type === 'dinner')
+  const dinnerRecipe = dinnerMeal?.recipe
+
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-6 text-3xl font-bold">Today - {today}</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Today - {today}</h1>
+        <Link href="/plans" className="text-sm text-muted-foreground hover:text-foreground">
+          &larr; 週間プランに戻る
+        </Link>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -232,6 +278,35 @@ export default function DailyContent() {
       {adaptationResult && (
         <div className="mb-4">
           <AdaptationResult result={adaptationResult} onClose={() => setAdaptationResult(null)} />
+        </div>
+      )}
+
+      {/* Today's Dinner Recipe Summary */}
+      {dinnerRecipe && (
+        <section className="mb-6 rounded-md border p-4">
+          <h2 className="mb-2 text-lg font-semibold">今日の夕食レシピ</h2>
+          <div className="flex items-center gap-4">
+            {dinnerRecipe.image_url && (
+              <img
+                src={dinnerRecipe.image_url}
+                alt={dinnerRecipe.title}
+                className="h-16 w-16 rounded-md object-cover"
+              />
+            )}
+            <div>
+              <p className="font-medium">{dinnerRecipe.title}</p>
+              {dinnerRecipe.nutrition_per_serving?.kcal != null && (
+                <p className="text-sm text-muted-foreground">{dinnerRecipe.nutrition_per_serving.kcal} kcal</p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Daily Nutrition Summary */}
+      {todayPlan.meal_plan.length > 0 && (
+        <div className="mb-6">
+          <DailyNutritionSummary meals={todayPlan.meal_plan} goal={goal} />
         </div>
       )}
 

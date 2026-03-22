@@ -1,11 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { getMyProfile } from '@/lib/api/profiles'
-import { getMyGoal } from '@/lib/api/goals'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,7 +13,6 @@ export function LoginForm() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
   const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,21 +36,9 @@ export function LoginForm() {
         setError('セッションの取得に失敗しました')
         return
       }
-
-      // Determine redirect destination
-      const profile = await getMyProfile(token)
-      if (!profile) {
-        router.push('/setup')
-        return
-      }
-
-      const goal = await getMyGoal(token)
-      if (!goal) {
-        router.push('/setup')
-        return
-      }
-
-      router.push('/plans')
+      // Use full-page navigation so middleware reads freshly persisted auth cookies.
+      // Setup routing can be handled after auth on app-side pages.
+      window.location.assign('/plans')
     } catch {
       setError('ログインに失敗しました')
     } finally {

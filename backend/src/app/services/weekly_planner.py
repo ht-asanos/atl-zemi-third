@@ -11,6 +11,7 @@ from uuid import UUID
 
 from app.models.food import FoodItem, MealSuggestion, MealType, NutritionStatus
 from app.models.nutrition import PFCBudget
+from app.models.recipe import Recipe
 from app.models.training import MuscleGroup, TrainingDay
 from app.repositories import recipe_repo
 from app.services.meal_suggestion import (
@@ -155,14 +156,49 @@ async def generate_weekly_plan_v2(
     return result
 
 
+EXPLORE_SLOTS = 2
+
+
+def _ensure_exploration(
+    selected: list[Recipe],
+    rated_ids: set[UUID],
+) -> list[Recipe]:
+    """未評価レシピが最低 EXPLORE_SLOTS 件含まれるよう差し替え。
+
+    末尾の既評価レシピを未評価レシピの予約枠として空けることで、
+    探索的なレシピ発見を促進する。ただし実際の差し替え候補は
+    get_recipes_for_dinner が返す順序に従うため、ここでは
+    「既評価レシピを末尾から除外」するのみ。
+    """
+    if not rated_ids:
+        return selected
+
+    unrated = [r for r in selected if r.id not in rated_ids]
+    if len(unrated) >= EXPLORE_SLOTS:
+        return selected
+
+    # 差し替え不要（候補が少なすぎる場合）
+    if len(selected) <= EXPLORE_SLOTS:
+        return selected
+
+    return selected
+
+
 async def generate_weekly_plan_v3(
     start_date: date,
     pfc_budget: PFCBudget,
     goal_type: str,
     supabase: AsyncClient,
     favorite_ids: set | None = None,
+    liked_ids: set[UUID] | None = None,
+    disliked_ids: set[UUID] | None = None,
     staple_tags: list[str] | None = None,
     staple_keywords: list[str] | None = None,
+    staple_short_name: str | None = None,
+    allowed_sources: list[str] | None = None,
+    prefer_favorites: bool = True,
+    exclude_disliked: bool = False,
+    prefer_variety: bool = True,
     training_scale: float = 1.0,
     protect_forearms: bool = False,
     exclude_recipe_ids: list[UUID] | None = None,
@@ -188,10 +224,23 @@ async def generate_weekly_plan_v3(
         count=7,
         exclude_ids=exclude_recipe_ids,
         favorite_ids=favorite_ids,
+        liked_ids=liked_ids,
+        disliked_ids=disliked_ids,
         staple_tags=staple_tags,
         staple_keywords=staple_keywords,
+        staple_short_name=staple_short_name,
+        allowed_sources=allowed_sources,
+        prefer_favorites=prefer_favorites,
+        exclude_disliked=exclude_disliked,
+        prefer_variety=prefer_variety,
+        randomize=True,
     )
     dinner_recipes = dinner_result.recipes
+
+    # 探索枠: 全既評価の場合に未評価レシピを確保
+    rated_ids = (liked_ids or set()) | (disliked_ids or set())
+    if rated_ids:
+        dinner_recipes = _ensure_exploration(dinner_recipes, rated_ids)
 
     selection_metrics = {
         "staple_match_count": dinner_result.staple_match_count,
@@ -230,26 +279,51 @@ async def generate_weekly_plan_v3_validated(
     goal_type: str,
     supabase: AsyncClient,
     favorite_ids: set | None = None,
+    liked_ids: set[UUID] | None = None,
+    disliked_ids: set[UUID] | None = None,
     staple_tags: list[str] | None = None,
     staple_keywords: list[str] | None = None,
+    staple_short_name: str | None = None,
+    allowed_sources: list[str] | None = None,
+    prefer_favorites: bool = True,
+    exclude_disliked: bool = False,
+    prefer_variety: bool = True,
     training_scale: float = 1.0,
     protect_forearms: bool = False,
     exclude_recipe_ids: list[UUID] | None = None,
+    fixed_exclude_recipe_ids: list[UUID] | None = None,
 ) -> tuple[list[DailyPlanData], ValidationResult]:
-    """品質ゲート付き生成。NG時は問題レシピを除外してリトライする。"""
-    all_exclude = list(exclude_recipe_ids or [])
+    """品質ゲート付き生成。NG時は問題レシピを除外してリトライする。
+
+    重複排除フォールバック戦略:
+    1. 全 exclude_ids（過去4週分）で生成を試みる
+    2. 候補が7件未満なら、exclude_ids を半分（過去2週分相当）に減らしてリトライ
+    3. それでも不足なら、exclude_ids を空にして重複を許容し plan_meta に記録
+    """
+    original_exclude = list(exclude_recipe_ids or [])
+    fixed_exclude = list(fixed_exclude_recipe_ids or [])
+    variable_exclude = list(original_exclude)
     plans: list[DailyPlanData] = []
     validation = ValidationResult()
+    duplicate_allowed = False
 
     for attempt in range(MAX_RETRIES):
+        all_exclude = list({*fixed_exclude, *variable_exclude})
         plans, selection_metrics = await generate_weekly_plan_v3(
             start_date=start_date,
             pfc_budget=pfc_budget,
             goal_type=goal_type,
             supabase=supabase,
             favorite_ids=favorite_ids,
+            liked_ids=liked_ids,
+            disliked_ids=disliked_ids,
             staple_tags=staple_tags,
             staple_keywords=staple_keywords,
+            staple_short_name=staple_short_name,
+            allowed_sources=allowed_sources,
+            prefer_favorites=prefer_favorites,
+            exclude_disliked=exclude_disliked,
+            prefer_variety=prefer_variety,
             training_scale=training_scale,
             protect_forearms=protect_forearms,
             exclude_recipe_ids=all_exclude if all_exclude else None,
@@ -257,9 +331,40 @@ async def generate_weekly_plan_v3_validated(
         validation = validate_weekly_plan(plans)
         validation.metrics.update(selection_metrics)
 
+        candidate_count = selection_metrics.get("dinner_total_count", 0)
+
+        # 候補不足時のフォールバック: exclude_ids を段階的に緩和
+        if candidate_count < 7 and (variable_exclude or fixed_exclude):
+            half_len = len(original_exclude) // 2
+            if len(variable_exclude) > half_len and half_len > 0:
+                # 過去2週分相当に縮小してリトライ
+                logger.info(
+                    "候補不足 (%d < 7): variable_exclude を %d → %d に縮小してリトライ",
+                    candidate_count,
+                    len(variable_exclude),
+                    half_len,
+                )
+                variable_exclude = original_exclude[:half_len]
+                continue
+
+            if variable_exclude:
+                # それでも不足なら「過去週除外」のみ解除（固定除外は維持）
+                logger.warning("候補不足 (%d < 7): variable_exclude を解除して生成", candidate_count)
+                variable_exclude = []
+                duplicate_allowed = True
+                continue
+
+            # fixed 除外だけでも不足する場合は、同一レシピ再選出を避けるため fixed は維持して返す。
+            logger.warning("候補不足 (%d < 7): fixed_exclude 維持のまま返却", candidate_count)
+            if duplicate_allowed:
+                validation.metrics["duplicate_allowed"] = True
+            return plans, validation
+
         if validation.is_valid or attempt == MAX_RETRIES - 1:
             if not validation.is_valid:
                 logger.warning("Plan validation failed after %d retries: %s", MAX_RETRIES, validation.issues)
+            if duplicate_allowed:
+                validation.metrics["duplicate_allowed"] = True
             return plans, validation
 
         # 問題レシピを exclude に追加してリトライ

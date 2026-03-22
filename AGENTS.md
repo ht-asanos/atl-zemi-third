@@ -1,5 +1,9 @@
 # AGENTS.md
 
+- 必ず日本語で応対してください
+- 調査やデバッグにはサブエージェントを活用してコンテキストを節約してください
+- 重要な決定事項は定期的にマークダウンファイルに記録してください
+
 This is a guide for AI coding agents (Claude Code, Cursor, Codex, etc.).
 It defines the conventions, workflows, and constraints of this project.
 
@@ -107,6 +111,7 @@ repos:
         pass_filenames: false
 ```
 
+
 ## 🧪 Testing Instructions
 エージェントはコード変更後、以下の手順で整合性を確認してください。
 
@@ -122,6 +127,10 @@ repos:
 - **Imports:** - @ 記法によるパスエイリアスを使用すること。
   - ES Modules 優先。CommonJS は避ける。
 - **Style:** 実装前に `@docs/style-guide.md` があれば参照すること。
+
+## Git Rules
+- **Task Start** 新しいタスクを開始する際は、必ずブランチを切ってから行うこと。
+- **Task End** タスク終了時は実画面でのテストを行い、完了したことを確かめたあとgitへcommit&push、そしてmainへのpull requestをすること。
 
 ## 📝 PR & Commit Rules
 - **PR Title:** `[<component/module>] <Description>`

@@ -2,7 +2,14 @@ from datetime import date
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+class RecipeFilters(BaseModel):
+    allowed_sources: list[Literal["rakuten", "youtube"]] = Field(default_factory=lambda: ["rakuten", "youtube"])
+    prefer_favorites: bool = True
+    exclude_disliked: bool = True
+    prefer_variety: bool = True
 
 
 class ShoppingListItem(BaseModel):
@@ -38,17 +45,25 @@ class WeeklyPlanRequest(BaseModel):
     start_date: date
     staple_name: str | None = None
     mode: Literal["classic", "recipe"] = "recipe"
+    recipe_filters: RecipeFilters | None = None
 
 
 class PatchMealRequest(BaseModel):
     staple_name: str
 
 
+class PatchRecipeRequest(BaseModel):
+    recipe_filters: RecipeFilters | None = None
+
+
 class PlanMeta(BaseModel):
     mode: str | None = None
     staple_name: str | None = None
+    recipe_filters: RecipeFilters | None = None
     validation: dict | None = None
     validation_issues: list[str] | None = None
+    duplicate_count: int | None = None
+    candidate_pool_size: int | None = None
 
 
 class DailyPlanResponse(BaseModel):

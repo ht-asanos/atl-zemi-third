@@ -1,15 +1,26 @@
-from datetime import date
+from datetime import date, timedelta
 from uuid import UUID
 
-from app.data.food_master import STAPLE_TAG_MAP, STAPLE_TITLE_KEYWORDS
+from app.data.food_master import STAPLE_SHORT_NAMES, STAPLE_TAG_MAP, STAPLE_TITLE_KEYWORDS
 from app.dependencies.auth import get_current_user_id
 from app.dependencies.supabase_client import get_authenticated_supabase
+from app.exceptions import AppException, ErrorCode
 from app.models.food import FoodCategory, MealSuggestion
 from app.models.nutrition import PFCBudget
-from app.repositories import favorite_repo, food_repo, goal_repo, plan_repo, recipe_repo, shopping_check_repo
+from app.repositories import (
+    favorite_repo,
+    food_repo,
+    goal_repo,
+    plan_repo,
+    rating_repo,
+    recipe_repo,
+    shopping_check_repo,
+)
 from app.schemas.plan import (
     DailyPlanResponse,
     PatchMealRequest,
+    PatchRecipeRequest,
+    RecipeFilters,
     SetShoppingListCheckRequest,
     ShoppingListChecksResponse,
     ShoppingListResponse,
@@ -20,7 +31,7 @@ from app.services.meal_suggestion import _make_dinner_from_recipe, calc_dinner_b
 from app.services.shopping_list import generate_shopping_list
 from app.services.training_adaptation import build_next_week_training_adjustment
 from app.services.weekly_planner import generate_weekly_plan, generate_weekly_plan_v3_validated
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from postgrest.exceptions import APIError
 
 from supabase import AsyncClient
@@ -28,14 +39,52 @@ from supabase import AsyncClient
 router = APIRouter(prefix="/plans", tags=["plans"])
 
 
+def _normalize_recipe_filters(filters: RecipeFilters | dict | None) -> RecipeFilters:
+    if isinstance(filters, RecipeFilters):
+        normalized = filters
+    elif isinstance(filters, dict):
+        normalized = RecipeFilters(**filters)
+    else:
+        normalized = RecipeFilters()
+
+    if not normalized.allowed_sources:
+        raise AppException(ErrorCode.VALIDATION_ERROR, 422, "少なくとも1つのレシピソースを選択してください")
+    return normalized
+
+
+def _week_start_for_plan_date(plan_date_value: date | str) -> date:
+    plan_date = date.fromisoformat(plan_date_value) if isinstance(plan_date_value, str) else plan_date_value
+    return plan_date - timedelta(days=plan_date.weekday())
+
+
+def _collect_dinner_recipe_ids_from_plans(plans: list[DailyPlanResponse]) -> list[UUID]:
+    ids: set[UUID] = set()
+    for p in plans:
+        if not isinstance(p.meal_plan, list):
+            continue
+        for meal in p.meal_plan:
+            if meal.get("meal_type") != "dinner":
+                continue
+            recipe = meal.get("recipe")
+            rid = recipe.get("id") if isinstance(recipe, dict) else None
+            if not rid:
+                continue
+            try:
+                ids.add(UUID(str(rid)))
+            except (ValueError, TypeError):
+                continue
+    return list(ids)
+
+
 async def _validate_staple(supabase: AsyncClient, staple_name: str):
     food = await food_repo.get_food_by_name(supabase, staple_name)
     if food is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Food not found: {staple_name}")
+        raise AppException(ErrorCode.VALIDATION_ERROR, 404, f"Food not found: {staple_name}")
     if food.category != FoodCategory.STAPLE:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Food '{staple_name}' is not a staple (category: {food.category.value})",
+        raise AppException(
+            ErrorCode.STAPLE_INVALID,
+            422,
+            f"Food '{staple_name}' is not a staple (category: {food.category.value})",
         )
     return food
 
@@ -93,44 +142,66 @@ async def create_weekly_plan(
 ) -> WeeklyPlanResponse:
     goal = await goal_repo.get_latest_goal(supabase, user_id)
     if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found. Create goal first.")
+        raise AppException(ErrorCode.GOAL_NOT_FOUND, 404, "Goal not found. Create goal first.")
+
+    recipe_filters = _normalize_recipe_filters(body.recipe_filters)
 
     pfc_budget = PFCBudget(protein_g=goal.protein_g, fat_g=goal.fat_g, carbs_g=goal.carbs_g)
     training_adj = await build_next_week_training_adjustment(supabase, user_id, body.start_date, goal.goal_type)
 
     if body.mode == "recipe":
         fav_ids = await favorite_repo.get_favorite_recipe_ids(supabase, user_id)
+        liked_ids = await rating_repo.get_liked_recipe_ids(supabase, user_id)
+        disliked_ids = await rating_repo.get_disliked_recipe_ids(supabase, user_id)
         staple_tags = None
         staple_keywords = None
+        staple_short_name = None
         if body.staple_name:
             staple_tags = STAPLE_TAG_MAP.get(body.staple_name)
             staple_keywords = STAPLE_TITLE_KEYWORDS.get(body.staple_name)
+            staple_short_name = STAPLE_SHORT_NAMES.get(body.staple_name)
+
+        # 過去N週のレシピIDを取得して重複排除に使用
+        past_ids = await plan_repo.get_past_recipe_ids(supabase, user_id, weeks=4)
+        # 同じ週を「再生成」する場合、現在週ですでに使っているレシピも除外する。
+        current_week_plans = await plan_repo.get_weekly_plans(supabase, user_id, body.start_date)
+        current_week_ids = _collect_dinner_recipe_ids_from_plans(current_week_plans)
+
         daily_plans, validation = await generate_weekly_plan_v3_validated(
             start_date=body.start_date,
             pfc_budget=pfc_budget,
             goal_type=goal.goal_type,
             supabase=supabase,
             favorite_ids=fav_ids,
+            liked_ids=liked_ids,
+            disliked_ids=disliked_ids,
             staple_tags=staple_tags,
             staple_keywords=staple_keywords,
+            staple_short_name=staple_short_name,
             training_scale=training_adj.scale,
             protect_forearms=training_adj.protect_forearms,
+            exclude_recipe_ids=past_ids,
+            fixed_exclude_recipe_ids=current_week_ids,
+            allowed_sources=recipe_filters.allowed_sources,
+            prefer_favorites=recipe_filters.prefer_favorites,
+            exclude_disliked=recipe_filters.exclude_disliked,
+            prefer_variety=recipe_filters.prefer_variety,
         )
         # 主食指定時は非一致フォールバックを許容しない。
         # 一致候補ゼロなら生成を失敗として返し、ユーザーに再設定を促す。
         if body.staple_name and validation.metrics.get("staple_match_count", 0) == 0:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=(
-                    f"主食「{body.staple_name}」に一致する夕食レシピが見つかりません。"
-                    "主食を変更するか、レシピデータを追加してください。"
-                ),
+            raise AppException(
+                ErrorCode.RECIPE_POOL_EXHAUSTED,
+                422,
+                f"主食「{body.staple_name}」に一致する夕食レシピが見つかりません。"
+                "主食を変更するか、レシピデータを追加してください。",
             )
     else:  # classic
         if not body.staple_name:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="staple_name is required for classic mode",
+            raise AppException(
+                ErrorCode.VALIDATION_ERROR,
+                422,
+                "staple_name is required for classic mode",
             )
         staple = await _validate_staple(supabase, body.staple_name)
         protein_foods = await food_repo.get_protein_foods(supabase)
@@ -146,10 +217,18 @@ async def create_weekly_plan(
             protect_forearms=training_adj.protect_forearms,
         )
 
-    plan_meta: dict = {"mode": body.mode, "staple_name": body.staple_name}
+    plan_meta: dict = {
+        "mode": body.mode,
+        "staple_name": body.staple_name,
+        "recipe_filters": recipe_filters.model_dump(),
+    }
     if body.mode == "recipe":
         plan_meta["validation"] = validation.metrics
         plan_meta["validation_issues"] = validation.issues
+        total = validation.metrics.get("total_dinners", 0)
+        unique = validation.metrics.get("unique_recipes", 0)
+        plan_meta["duplicate_count"] = total - unique
+        plan_meta["candidate_pool_size"] = validation.metrics.get("dinner_total_count", 0)
     plans_data = [
         {
             "user_id": str(user_id),
@@ -169,17 +248,18 @@ async def create_weekly_plan(
 @router.patch("/{plan_id}/recipe", response_model=DailyPlanResponse)
 async def patch_recipe(
     plan_id: UUID,
+    body: PatchRecipeRequest | None = None,
     user_id: UUID = Depends(get_current_user_id),
     supabase: AsyncClient = Depends(get_authenticated_supabase),
 ) -> DailyPlanResponse:
     """夕食レシピを差し替える。"""
     row = await plan_repo.get_daily_plan_row_by_user(supabase, plan_id, user_id)
     if row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        raise AppException(ErrorCode.PLAN_NOT_FOUND, 404, "Plan not found")
 
     meal_plan = row["meal_plan"]
     if not isinstance(meal_plan, list):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid meal_plan format")
+        raise AppException(ErrorCode.VALIDATION_ERROR, 422, "Invalid meal_plan format")
 
     # dinner を特定
     dinner_index: int | None = None
@@ -193,15 +273,12 @@ async def patch_recipe(
             break
 
     if dinner_index is None or current_recipe_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="This plan does not use recipe mode",
-        )
+        raise AppException(ErrorCode.VALIDATION_ERROR, 422, "This plan does not use recipe mode")
 
     # 朝昼の実データから dinner 予算を計算
     goal = await goal_repo.get_latest_goal(supabase, user_id)
     if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise AppException(ErrorCode.GOAL_NOT_FOUND, 404, "Goal not found")
 
     pfc_budget = PFCBudget(protein_g=goal.protein_g, fat_g=goal.fat_g, carbs_g=goal.carbs_g)
 
@@ -255,9 +332,17 @@ async def patch_recipe(
 
     # plan_meta から staple 情報を復元
     plan_meta = row.get("plan_meta") or {}
+    recipe_filters = _normalize_recipe_filters(
+        (body.recipe_filters if body else None) or plan_meta.get("recipe_filters")
+    )
     staple_name = plan_meta.get("staple_name")
     patch_staple_tags = STAPLE_TAG_MAP.get(staple_name) if staple_name else None
     patch_staple_keywords = STAPLE_TITLE_KEYWORDS.get(staple_name) if staple_name else None
+    patch_staple_short_name = STAPLE_SHORT_NAMES.get(staple_name) if staple_name else None
+
+    # 評価データ取得
+    liked_ids = await rating_repo.get_liked_recipe_ids(supabase, user_id)
+    disliked_ids = await rating_repo.get_disliked_recipe_ids(supabase, user_id)
 
     # 新レシピ取得（現在のレシピを除外、主食フィルタ付き）
     result = await recipe_repo.get_recipes_for_dinner(
@@ -265,17 +350,35 @@ async def patch_recipe(
         dinner_budget,
         count=1,
         exclude_ids=[current_recipe_id],
+        liked_ids=liked_ids,
+        disliked_ids=disliked_ids,
         staple_tags=patch_staple_tags,
         staple_keywords=patch_staple_keywords,
+        staple_short_name=patch_staple_short_name,
+        allowed_sources=recipe_filters.allowed_sources,
+        prefer_favorites=recipe_filters.prefer_favorites,
+        exclude_disliked=recipe_filters.exclude_disliked,
+        prefer_variety=recipe_filters.prefer_variety,
+        randomize=True,
     )
     if staple_name and result.staple_match_count == 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"主食「{staple_name}」に一致する代替レシピが見つかりません",
+        raise AppException(
+            ErrorCode.RECIPE_POOL_EXHAUSTED,
+            422,
+            f"主食「{staple_name}」に一致する代替レシピが見つかりません",
         )
     new_recipes = result.recipes
     if not new_recipes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No alternative recipe found")
+        if len(recipe_filters.allowed_sources) < 2:
+            source_labels = " / ".join(
+                "YouTube" if s == "youtube" else "楽天レシピ" for s in recipe_filters.allowed_sources
+            )
+            raise AppException(
+                ErrorCode.RECIPE_POOL_EXHAUSTED,
+                422,
+                f"選択したレシピソース（{source_labels}）に一致する代替レシピが見つかりません",
+            )
+        raise AppException(ErrorCode.RECIPE_NOT_FOUND, 404, "No alternative recipe found")
 
     new_dinner = _make_dinner_from_recipe(new_recipes[0])
     meal_plan[dinner_index] = new_dinner.model_dump()
@@ -285,14 +388,22 @@ async def patch_recipe(
 
     try:
         await plan_repo.update_daily_plan(supabase, plan_id, meal_plan, workout_plan, expected_updated_at)
+        merged_plan_meta = dict(plan_meta)
+        merged_plan_meta["recipe_filters"] = recipe_filters.model_dump()
+        await plan_repo.update_week_plan_meta(
+            supabase,
+            user_id,
+            _week_start_for_plan_date(row["plan_date"]),
+            merged_plan_meta,
+        )
     except APIError as e:
         if "40001" in str(e):
-            raise HTTPException(status_code=409, detail="Plan was modified concurrently") from e
+            raise AppException(ErrorCode.CONFLICT, 409, "Plan was modified concurrently") from e
         raise
 
     updated = await plan_repo.get_daily_plan(supabase, plan_id)
     if updated is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found after update")
+        raise AppException(ErrorCode.PLAN_NOT_FOUND, 404, "Plan not found after update")
     return updated
 
 
@@ -305,11 +416,11 @@ async def patch_meal(
 ) -> DailyPlanResponse:
     existing = await plan_repo.get_daily_plan_by_user(supabase, plan_id, user_id)
     if existing is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        raise AppException(ErrorCode.PLAN_NOT_FOUND, 404, "Plan not found")
 
     goal = await goal_repo.get_latest_goal(supabase, user_id)
     if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise AppException(ErrorCode.GOAL_NOT_FOUND, 404, "Goal not found")
 
     staple = await _validate_staple(supabase, body.staple_name)
     protein_foods = await food_repo.get_protein_foods(supabase)
@@ -323,5 +434,5 @@ async def patch_meal(
 
     updated = await plan_repo.get_daily_plan(supabase, plan_id)
     if updated is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found after update")
+        raise AppException(ErrorCode.PLAN_NOT_FOUND, 404, "Plan not found after update")
     return updated

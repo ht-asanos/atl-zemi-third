@@ -2,7 +2,9 @@
 
 本ロードマップはコードベースの実装状況を正確に反映し、今後の開発方針を示すものである。
 
-差分メモ（2026-03-12）: [roadmap_delta_2026-03-12.md](/Users/hdymacuser/WorkSpace/260401dtzemi/atl-zemi-third/doc/roadmap_delta_2026-03-12.md)
+差分メモ:
+- [roadmap_delta_2026-03-12.md](/Users/hdymacuser/WorkSpace/260401dtzemi/atl-zemi-third/doc/roadmap_delta_2026-03-12.md)
+- [roadmap_update_2026-03-22.md](/Users/hdymacuser/WorkSpace/260401dtzemi/atl-zemi-third/doc/roadmap_update_2026-03-22.md)
 
 ---
 
@@ -13,8 +15,8 @@
 | Frontend | Next.js 15 (App Router, TypeScript, Tailwind CSS v4, shadcn/ui) |
 | Backend | FastAPI (Python 3.11, uv) |
 | DB / Auth / Storage | Supabase (PostgreSQL + Auth + Storage) |
-| AI | ChatGPT API (感想タグ抽出) |
-| 外部データ | MEXT 食品成分データベース (スクレイピング)、楽天レシピ API |
+| AI | OpenAI API (感想タグ抽出), Gemini (レシピ品質判定・食材処理補助) |
+| 外部データ | MEXT 食品成分データベース (スクレイピング), 楽天レシピ API, YouTube |
 | テスト / Lint | pytest, ruff, ty, pre-commit, ESLint |
 
 ---
@@ -54,9 +56,10 @@
 - フロントエンド（ログイン → 設定 → 主食選択 → 週間プラン表示）
 - Middleware による認証保護（`/setup`, `/staple`, `/plans` へのアクセス制御）
 
-**既知の不具合:**
-- 実 DB 経路で `json.dumps` 二重シリアライズ起因のエラーが発生する可能性あり
-- ユニットテスト（mock）は全て通過するが、結合テスト（実 Supabase）での検証が未完了
+**現状メモ:**
+- 実 DB 経路の `meal_plan` JSON 二重シリアライズ問題は修正済み
+- 既存プランは `daily_plans.meal_plan` のスナップショット保持であり、後から `recipes` を更新しても自動反映されない
+- 引き続き実 Supabase 経路での継続的な結合確認は必要
 
 ---
 
@@ -78,42 +81,44 @@
 
 **実装済み:**
 - MEXT 食品 DB スクレイパー（9 カテゴリ対応）+ 食材マッチング（fuzzy match + 信頼度スコア）
-- 楽天レシピ API クライアント（新 URL + Bearer 認証対応済み）+ DB キャッシュ（`recipes` / `recipe_ingredients` テーブル）
+- 楽天レシピ API クライアント（現行認証方式対応）+ DB キャッシュ（`recipes` / `recipe_ingredients` テーブル）
+- レシピ更新 API / 補完 API（`POST /recipes/refresh`, `POST /recipes/backfill`）
+- YouTube レシピ取込と管理画面運用（抽出、単体登録、チャンネル一括アレンジ登録、品質ゲート）
+- 食材手動レビュー UI / API（`manual_review_needed` の運用導線あり）
 - レシピモード v3（朝食固定 + 昼食固定 + 夕食日替わりレシピ、PFC フィルタ付き）
 - フロントエンドでモード切替（classic / recipe）
 
-**未完了サブタスク:**
-- レシピ更新は CLI（`data_loader.py`）のみ。API エンドポイント（`POST /recipes/refresh`）は未実装
-- `backfill` コマンドのスクレイピング補完は未実装（コード内に `NOTE: 未実装` と明記）
-- 食材マッチングの手動レビューフロー（`manual_review_needed` フラグは保存されるが UI なし）
+**残タスク:**
+- レシピ更新の定期自動実行基盤は未実装。現状は手動 API / CLI 運用
+- MEXT / レシピ補完の対象拡大は継続課題
+- レシピ取り込み品質の運用監視とバックフィルの定例化が必要
 
 ---
 
 ## 今後のフェーズ
 
-### Phase 4: 日常使いの実用性強化（次に着手）
+### Phase 4: 日常使いの実用性強化（一部完了、次の主対象は 4-3）
 
 **目的:** 買い物・レシピ差し替え・データ安定性など、日常利用に必要な機能を整備する。
 
-| # | タスク | レイヤー | 優先度 | 備考 |
-|---|---|---|---|---|
-| 4-1 | 買い物リスト自動生成 | Backend + Frontend | 高 | 週次レシピの `recipe_ingredients` を集約、カテゴリ別・重複マージ表示。新 API: `GET /plans/weekly/shopping-list` |
-| 4-2 | レシピモードの夕食再抽選 | Backend + Frontend | 高 | 新 API: `PATCH /plans/{id}/recipe`。**影響範囲**: `schemas/plan.py`（新スキーマ）、`frontend/src/types/plan.ts`（型追加）、`adaptation_engine`（recipe モード対応）、`plan_revisions`（リビジョン保存）。後方互換: classic モードの `PATCH /plans/{id}/meal` は変更しない |
-| 4-3 | レシピプール定期自動更新 | Backend + Infra | 高 | **実行基盤**: GitHub Actions (cron schedule) or Supabase Edge Functions。**要件**: 週1回実行、失敗時 3 回リトライ + Slack/メール通知、実行履歴を `job_logs` テーブルに保存。既存 `cmd_refresh_recipes()` を API 化 or GitHub Actions workflow でラップ |
-| 4-4 | Phase 2 実 DB 経路のバグ修正 | Backend | 高 | `meal_plan` の JSON シリアライズ問題を特定・修正、実 Supabase での結合テスト追加 |
-| 4-5 | 食事写真アップロード | Backend + Frontend | 中 | Supabase Storage（private バケット）、署名 URL（TTL 15分）、ログ画面にカメラ UI |
-| 4-6 | レシピお気に入り機能 | Backend + Frontend | 中 | `user_recipe_favorites` テーブル追加、次回プラン生成時に優先選出 |
+| # | タスク | 状態 | レイヤー | 優先度 | 備考 |
+|---|---|---|---|---|---|
+| 4-1 | 買い物リスト自動生成 | 完了 | Backend + Frontend | 高 | `GET /plans/weekly/shopping-list` とチェック状態 API まで実装済み |
+| 4-2 | レシピモードの夕食再抽選 | 完了 | Backend + Frontend | 高 | `PATCH /plans/{id}/recipe` 実装済み。`plan_meta` に `recipe_filters` を保持 |
+| 4-3 | レシピプール定期自動更新 | 次に着手 | Backend + Infra | 高 | 週次の refresh / backfill / 品質保守を手動運用から定期実行へ移す。`job_logs`、通知、再試行、実行基盤が未実装 |
+| 4-4 | Phase 2 実 DB 経路のバグ修正 | 完了 | Backend | 高 | `meal_plan` の JSON シリアライズ問題は修正済み |
+| 4-5 | 食事写真アップロード | 未着手 | Backend + Frontend | 中 | Supabase Storage（private バケット）、署名 URL（TTL 15分）、ログ画面にカメラ UI |
+| 4-6 | レシピお気に入り機能 | 完了 | Backend + Frontend | 中 | `user_recipe_favorites` と API / UI / 優先選出を実装済み |
 
 **Exit Criteria（機能）:**
-- 買い物リスト画面で週間レシピの必要食材が一覧表示される
-- 夕食レシピを1日単位で差し替えでき、PFC が再計算される
 - DB 内レシピが週1回自動更新され、失敗時にアラートが飛ぶ
-- `POST /plans/weekly` が実 DB で正常動作する（classic / recipe 両モード）
+- refresh / backfill / 非食事クリーンアップの定期実行結果が追跡できる
+- 写真付き食事ログが保存・参照できる
 
 **Exit Criteria（KPI）:**
+- レシピ更新ジョブ成功率 > 99%
 - 生成失敗率 < 1%（実 DB 経路での 5xx エラー率）
 - 夕食レシピ重複率 = 0%（7日間で同一レシピなし）
-- 目標 PFC 乖離 < 20%（夕食の protein が dinner_budget の 80-120% 範囲内）
 
 ---
 
@@ -161,7 +166,7 @@
 ```
 Phase 1 (基盤) ✅ → Phase 2 (MVP コア) 🔧安定化中 → Phase 3 (適応) ✅
                           ↓
-                   Phase 2.5 (レシピ統合) ⚠️部分完了
+                   Phase 2.5 (レシピ統合) ✅運用段階
                           ↓
-              Phase 4 (実用性強化) → Phase 5 (パーソナライズ) → Phase 6 (運用・拡張)
+         Phase 4 (一部完了 / 次は 4-3) → Phase 5 (パーソナライズ) → Phase 6 (運用・拡張)
 ```

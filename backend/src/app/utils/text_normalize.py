@@ -3,6 +3,8 @@
 import re
 import unicodedata
 
+from app.data.food_master import ACCOMPANIMENT_SUFFIXES
+
 
 def normalize_jp(text: str) -> str:
     """NFKC正規化 + カタカナ→ひらがな + 記号除去。"""
@@ -27,3 +29,15 @@ def contains_normalized(haystack: str, needle: str) -> bool:
     if len(needle) < 2:
         return False
     return normalize_jp(needle) in normalize_jp(haystack)
+
+
+def is_accompaniment_for_staple(title: str, staple_short_name: str) -> bool:
+    """タイトルが主食の付け合わせレシピかどうかを判定する。
+
+    例: staple_short_name="うどん", title="うどんのつけ汁" → True
+        staple_short_name="うどん", title="肉うどん" → False
+    """
+    suffixes = ACCOMPANIMENT_SUFFIXES.get(staple_short_name)
+    if not suffixes:
+        return False
+    return any(contains_normalized(title, suffix) for suffix in suffixes)

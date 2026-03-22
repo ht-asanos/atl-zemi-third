@@ -18,6 +18,33 @@ def _get_jwk_client() -> PyJWKClient:
     return PyJWKClient(jwks_url, cache_keys=True)
 
 
+def _normalize_issuer_base(url: str) -> str:
+    return url.rstrip("/")
+
+
+def _allowed_issuers() -> set[str]:
+    issuers = {f"{_normalize_issuer_base(settings.supabase_url)}/auth/v1"}
+    for raw in settings.supabase_token_issuers.split(","):
+        val = raw.strip()
+        if not val:
+            continue
+        base = _normalize_issuer_base(val)
+        if base.endswith("/auth/v1"):
+            issuers.add(base)
+        else:
+            issuers.add(f"{base}/auth/v1")
+    return issuers
+
+
+def _validate_issuer(payload: dict) -> None:
+    iss = payload.get("iss")
+    if not isinstance(iss, str) or iss not in _allowed_issuers():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token issuer: {iss}",
+        )
+
+
 def get_current_user_id(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
 ) -> UUID:
@@ -31,9 +58,9 @@ def get_current_user_id(
             signing_key.key,
             algorithms=["ES256", "HS256"],
             audience="authenticated",
-            issuer=f"{settings.supabase_url}/auth/v1",
             options={"require": ["exp", "iss", "sub"]},
         )
+        _validate_issuer(payload)
     except (jwt.InvalidTokenError, Exception) as jwks_err:
         # Fallback: HS256 with shared secret (older Supabase / hosted)
         if settings.supabase_jwt_secret:
@@ -43,9 +70,9 @@ def get_current_user_id(
                     settings.supabase_jwt_secret,
                     algorithms=["HS256"],
                     audience="authenticated",
-                    issuer=f"{settings.supabase_url}/auth/v1",
                     options={"require": ["exp", "iss", "sub"]},
                 )
+                _validate_issuer(payload)
             except jwt.InvalidTokenError as e:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,

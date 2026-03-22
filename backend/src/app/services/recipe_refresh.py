@@ -12,6 +12,8 @@ from app.models.food import NutritionStatus
 from app.repositories import mext_food_repo, recipe_repo
 from app.schemas.recipe import BackfillResult, RefreshResult
 from app.services.ingredient_matcher import (
+    NEGLIGIBLE_INGREDIENTS,
+    _normalize_for_mext,
     calculate_recipe_nutrition,
     match_ingredient,
     match_recipe_ingredients,
@@ -88,6 +90,7 @@ async def refresh_stale_recipes(
     fetched_recipes = await fetch_multiple_categories(http_client, rakuten_app_id, rakuten_access_key, old_categories)
     gate = await filter_meal_like_recipes(fetched_recipes)
     recipes = gate.accepted
+    # 主食指定なし取込のため is_accompaniment_for_staple() は不適用（Gemini ゲートでカバー）
     logger.info(
         "refresh_stale_recipes quality gate: fetched=%d accepted=%d rejected=%d",
         len(fetched_recipes),
@@ -133,13 +136,16 @@ async def backfill_unmatched_ingredients(
     scraped_foods = 0
     errors: list[str] = []
     for name in unique_names:
+        search_name, _ = _normalize_for_mext(name)
         try:
-            foods = await search_foods_by_name(http_client, name, max_results=3)
+            foods = await search_foods_by_name(http_client, search_name, max_results=3)
             if foods:
+                for f in foods:
+                    f.raw_data = {**(f.raw_data or {}), "source": "scrape_fallback"}
                 count = await mext_food_repo.upsert_foods(supabase, foods)
                 scraped_foods += count
         except Exception as e:
-            errors.append(f"{name}: {e}")
+            errors.append(f"{name}({search_name}): {e}")
 
     # 再マッチング
     matched_after = 0
@@ -147,22 +153,24 @@ async def backfill_unmatched_ingredients(
         name = row["ingredient_name"]
         amount_text = row.get("amount_text")
         parsed_name, amount_g = parse_ingredient_text(f"{name} {amount_text}" if amount_text else name)
+        is_negligible = parsed_name in NEGLIGIBLE_INGREDIENTS
         mext_food_id, confidence = await match_ingredient(supabase, parsed_name)
+        update_data: dict[str, Any] = {
+            "amount_g": amount_g,
+            "is_negligible": is_negligible,
+            "manual_review_needed": False if is_negligible else 0.3 <= confidence < 0.6,
+        }
         if mext_food_id:
-            await (
-                supabase.table("recipe_ingredients")
-                .update(
-                    {
-                        "mext_food_id": str(mext_food_id),
-                        "match_confidence": confidence,
-                        "amount_g": amount_g,
-                        "manual_review_needed": 0.3 <= confidence < 0.6,
-                    }
-                )
-                .eq("id", row["id"])
-                .execute()
+            update_data.update(
+                {
+                    "mext_food_id": str(mext_food_id),
+                    "match_confidence": confidence,
+                }
             )
             matched_after += 1
+        else:
+            update_data["match_confidence"] = confidence
+        await supabase.table("recipe_ingredients").update(update_data).eq("id", row["id"]).execute()
 
     # 栄養再計算
     recipe_ids = list({r["recipe_id"] for r in rows})
@@ -224,6 +232,8 @@ async def backfill_missing_normalized_ingredients(
             if not foods:
                 missing_names.append(name)
                 continue
+            for f in foods:
+                f.raw_data = {**(f.raw_data or {}), "source": "scrape_fallback"}
             added_foods += await mext_food_repo.upsert_foods(supabase, foods)
         except Exception as e:
             errors.append(f"{name}: {e}")

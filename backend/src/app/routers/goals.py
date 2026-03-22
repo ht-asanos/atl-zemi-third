@@ -2,11 +2,12 @@ from uuid import UUID
 
 from app.dependencies.auth import get_current_user_id
 from app.dependencies.supabase_client import get_authenticated_supabase
+from app.exceptions import AppException, ErrorCode
 from app.models.nutrition import UserProfile
 from app.repositories import goal_repo, profile_repo
 from app.schemas.goal import CreateGoalRequest, GoalResponse
 from app.services.nutrition_engine import calculate_nutrition_target
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from supabase import AsyncClient
 
@@ -21,7 +22,7 @@ async def create_goal(
 ) -> GoalResponse:
     profile = await profile_repo.get_profile(supabase, user_id)
     if profile is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found. Create profile first.")
+        raise AppException(ErrorCode.VALIDATION_ERROR, 404, "Profile not found. Create profile first.")
 
     user_profile = UserProfile(
         age=profile.age,
@@ -51,5 +52,5 @@ async def get_my_goal(
 ) -> GoalResponse:
     goal = await goal_repo.get_latest_goal(supabase, user_id)
     if goal is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+        raise AppException(ErrorCode.GOAL_NOT_FOUND, 404, "Goal not found")
     return goal

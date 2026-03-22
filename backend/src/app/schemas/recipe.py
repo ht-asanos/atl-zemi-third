@@ -18,6 +18,8 @@ class MextFoodResponse(BaseModel):
 
 class RecipeIngredientResponse(BaseModel):
     ingredient_name: str
+    display_ingredient_name: str | None = None
+    alternative_ingredient_names: list[str] = []
     amount_text: str | None = None
     amount_g: float | None = None
     match_confidence: float | None = None
@@ -25,6 +27,15 @@ class RecipeIngredientResponse(BaseModel):
     protein_g: float | None = None
     fat_g: float | None = None
     carbs_g: float | None = None
+    matched_food_name: str | None = None
+    nutrition_match_status: str = "unmatched"
+    nutrition_source: str = "none"
+
+
+class RecipeStepResponse(BaseModel):
+    step_no: int
+    text: str
+    est_minutes: int | None = None
 
 
 class RecipeResponse(BaseModel):
@@ -40,6 +51,11 @@ class RecipeResponse(BaseModel):
     tags: list[str] = []
     is_nutrition_calculated: bool = False
     ingredients: list[RecipeIngredientResponse] = []
+    ingredient_nutrition_coverage: dict | None = None
+    generated_steps: list[RecipeStepResponse] = []
+    steps_status: str = "pending"
+    youtube_video_id: str | None = None
+    recipe_source: str = "rakuten"
 
 
 class RecipeSearchResponse(BaseModel):

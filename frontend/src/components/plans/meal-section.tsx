@@ -13,10 +13,11 @@ interface MealSectionProps {
   mealIndex: number
   onChangeRecipe?: () => void
   onToggleFavorite?: (recipeId: string) => void
+  onViewRecipe?: (recipeId: string) => void
   favoriteRecipeIds?: Set<string>
 }
 
-export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite, favoriteRecipeIds }: MealSectionProps) {
+export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite, onViewRecipe, favoriteRecipeIds }: MealSectionProps) {
   const meal = meals[mealIndex]
   if (!meal) return null
 
@@ -31,6 +32,11 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
   const recipeId = meal.recipe?.id
   const isFavorite = recipeId ? (favoriteRecipeIds?.has(recipeId) ?? false) : false
   const recipeNutrition = meal.recipe?.nutrition_per_serving
+  const recipeUrl = meal.recipe?.recipe_url ?? ''
+  const sourceFromUrl = /youtu\.be|youtube\.com/.test(recipeUrl) ? 'youtube' : 'rakuten'
+  const recipeSource = ((meal.recipe?.recipe_source ?? sourceFromUrl) || sourceFromUrl).toLowerCase()
+  const resolvedSource = recipeSource === 'youtube' ? 'youtube' : sourceFromUrl
+  const sourceLabel = resolvedSource === 'youtube' ? 'YouTube' : '楽天'
 
   return (
     <div className="space-y-2">
@@ -39,8 +45,20 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
         {hasRecipe ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">レシピ: {meal.recipe!.title}</p>
+              {recipeId && onViewRecipe ? (
+                <button
+                  onClick={() => onViewRecipe(recipeId)}
+                  className="text-sm font-medium text-left hover:text-primary transition-colors"
+                >
+                  レシピ: {meal.recipe!.title}
+                </button>
+              ) : (
+                <p className="text-sm font-medium">レシピ: {meal.recipe!.title}</p>
+              )}
               <div className="flex items-center gap-1">
+                <Badge variant="outline" className="text-[10px]">
+                  {sourceLabel}
+                </Badge>
                 {recipeId && onToggleFavorite && (
                   <button
                     onClick={() => onToggleFavorite(recipeId)}
@@ -66,20 +84,31 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
               </div>
             </div>
             {meal.recipe!.image_url && (
-              <img
-                src={meal.recipe!.image_url}
-                alt={meal.recipe!.title}
-                className="h-32 w-full rounded-md object-cover"
-              />
+              recipeId && onViewRecipe ? (
+                <button
+                  onClick={() => onViewRecipe(recipeId)}
+                  className="w-full cursor-pointer rounded-md bg-muted/30"
+                  role="button"
+                  aria-label={`${meal.recipe!.title}の詳細を見る`}
+                >
+                  <div className="flex h-48 w-full items-center justify-center overflow-hidden rounded-md">
+                    <img
+                      src={meal.recipe!.image_url}
+                      alt={meal.recipe!.title}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                </button>
+              ) : (
+                <div className="flex h-48 w-full items-center justify-center overflow-hidden rounded-md bg-muted/30">
+                  <img
+                    src={meal.recipe!.image_url}
+                    alt={meal.recipe!.title}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              )
             )}
-            <a
-              href={meal.recipe!.recipe_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block text-sm text-primary underline"
-            >
-              楽天レシピで見る →
-            </a>
             {recipeNutrition && (
               <div className="rounded-md bg-muted/50 p-2">
                 <div className="flex items-center gap-2">

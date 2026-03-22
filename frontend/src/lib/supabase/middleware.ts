@@ -4,9 +4,13 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
+  // Server-side runtime in Docker should use container-reachable URL.
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl!,
+    supabaseAnonKey!,
     {
       cookies: {
         getAll() {
@@ -28,22 +32,9 @@ export async function updateSession(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  const { pathname } = request.nextUrl
-
-  // Redirect unauthenticated users to login
-  if (!user && !['/login', '/signup'].includes(pathname)) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  // Redirect authenticated users away from auth pages
-  if (user && ['/login', '/signup'].includes(pathname)) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/plans'
-    return NextResponse.redirect(url)
-  }
+  // Keep session in sync but avoid hard redirects here.
+  // Auth gating is handled by page-level/client logic and backend token checks.
+  void user
 
   return supabaseResponse
 }

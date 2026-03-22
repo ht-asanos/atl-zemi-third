@@ -17,6 +17,17 @@ class RecipeIngredient(BaseModel):
     protein_g: float | None = None
     fat_g: float | None = None
     carbs_g: float | None = None
+    matched_food_name: str | None = None
+    nutrition_match_status: str = "unmatched"
+    nutrition_source: str = "none"
+    display_ingredient_name: str | None = None
+    alternative_ingredient_names: list[str] = []
+
+
+class RecipeStep(BaseModel):
+    step_no: int
+    text: str
+    est_minutes: int | None = None
 
 
 class Recipe(BaseModel):
@@ -34,3 +45,8 @@ class Recipe(BaseModel):
     tags: list[str] = []
     is_nutrition_calculated: bool = False
     nutrition_status: NutritionStatus = NutritionStatus.CALCULATED
+    generated_steps: list[RecipeStep] = []
+    steps_status: str = "pending"
+    youtube_video_id: str | None = None
+    recipe_source: str = "rakuten"
+    ingredient_nutrition_coverage: dict[str, float | int] | None = None

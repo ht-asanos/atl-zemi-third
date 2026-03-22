@@ -33,18 +33,33 @@ _PROMPT = """\
 判定ルール:
 - is_meal=true:
   主菜/主食/副菜/汁物など、単体で献立の1品として成立する料理。
-- is_meal=false:
-  つゆ、たれ、だし、ソース、ドレッシング、薬味、トッピング専用など
-  それ単体で食事として成立しにくいもの。
+  例: 鍋焼きうどん、焼きうどん、カレーうどん、肉うどん、ナポリタン、
+      親子丼、チャーハン、味噌汁、豚汁、肉じゃが、野菜炒め、つゆだく牛丼
 
-重要:
-- 「ざるうどんのつけつゆ」「うどんのたれ」は is_meal=false
-- 「鍋焼きうどん」「焼きうどん」は is_meal=true
+- is_meal=false (以下は全て除外):
+  1. つゆ・たれ・ソース・ドレッシング・調味料レシピ全般
+     例: つけつゆ、つけ汁、めんつゆの作り方、だし汁、つけだれ、かえし、
+         パスタソース、トマトソース、ドレッシング、マヨソース、タルタルソース
+  2. 薬味・トッピング・ふりかけ単体
+     例: 薬味ねぎ、大根おろし、天かす、ふりかけ、佃煮
+  3. 具材だけのレシピ（完成した料理ではないもの）
+     例: 「うどんの具」「トッピング3種」「パスタの具材」
+  4. レシピ集・まとめ系
+     例: 「レシピ3選」「まとめ」「アレンジ5選」「○○の作り方集」
+  5. 調理テクニック・下ごしらえ系
+     例: 「だしの取り方」「野菜の切り方」「下味の付け方」
+
+重要な判断基準:
+- タレ/つゆ/ソース/ドレッシング/調味料レシピは全て is_meal=false
+- 「ざるうどんのつけつゆ」「うどんのたれ」「パスタのソース」→ is_meal=false
+- 「鍋焼きうどん」「焼きうどん」「カレーパスタ」→ is_meal=true
+- タイトルに「つゆ」「たれ」を含むが料理名の一部（例: 「つゆだく牛丼」）→ is_meal=true
+- 材料が調味料のみ（醤油、みりん、酢、砂糖等）→ is_meal=false の可能性大
 
 出力形式:
 入力配列と同じ長さの JSON 配列のみを返す。
 各要素は {"is_meal": true|false, "reason": "短い理由"}。
-余計な説明文は書かない。
+余計な説明文は書かない。\
 """
 
 
@@ -97,7 +112,7 @@ def _extract_json_array(text: str) -> list[dict[str, Any]] | None:
 
 
 async def _call_gemini(client: genai.Client, batch_inputs: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
-    content = f"{_PROMPT}\n\n" f"入力:\n{json.dumps(batch_inputs, ensure_ascii=False)}\n\n" "出力:"
+    content = f"{_PROMPT}\n\n入力:\n{json.dumps(batch_inputs, ensure_ascii=False)}\n\n出力:"
     for attempt in range(MAX_RETRIES):
         try:
             resp = await client.aio.models.generate_content(model=MODEL, contents=content)
@@ -143,7 +158,11 @@ async def filter_meal_like_recipes(
     *,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> RecipeQualityGateResult:
-    """LLMで「食事として成立するレシピ」のみを残す。"""
+    """LLMで「食事として成立するレシピ」のみを残す。
+
+    API keyなし時は安全側（全reject）に倒す。楽天取込経路で使用。
+    YouTube/admin 経路は filter_meal_like_recipes_safe() を使うこと。
+    """
     if not recipes:
         return RecipeQualityGateResult()
     if not settings.google_api_key:
@@ -161,3 +180,25 @@ async def filter_meal_like_recipes(
         final.rejected.extend(part.rejected)
 
     return final
+
+
+async def filter_meal_like_recipes_safe(
+    recipes: list[dict[str, Any]],
+    *,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+) -> RecipeQualityGateResult:
+    """Gemini 判定。API keyなし時は全 accept にフォールバック（既存フィルタに委譲）。
+
+    YouTube/admin 取込経路用。keyなし時にブロックしない設計。
+    楽天取込経路は filter_meal_like_recipes() を使うこと（keyなし → 全reject）。
+    """
+    if not recipes:
+        return RecipeQualityGateResult()
+    if not settings.google_api_key:
+        logger.warning(
+            "GOOGLE_API_KEY not set — quality gate skipped, accepting all %d recipes",
+            len(recipes),
+        )
+        return RecipeQualityGateResult(accepted=list(recipes))
+
+    return await filter_meal_like_recipes(recipes, batch_size=batch_size)

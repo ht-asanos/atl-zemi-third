@@ -29,8 +29,17 @@ def _row_to_mext_food(row: dict[str, Any]) -> MextFood:
 
 
 async def search_by_name(supabase: AsyncClient, query: str, limit: int = 20) -> list[MextFood]:
-    """MEXT 食品名を trigram 類似度で検索する。"""
-    response = await supabase.table("mext_foods").select("*").ilike("name", f"%{query}%").limit(limit).execute()
+    """MEXT 食品名を部分一致で検索する。
+
+    入力の空白・記号ゆらぎを吸収するため、クエリをトークンに分割して
+    `%token1%token2%...%` 形式の ILIKE で検索する。
+    """
+    tokens = [t for t in query.replace("　", " ").replace("/", " ").split() if t]
+    if tokens:
+        pattern = "%" + "%".join(tokens) + "%"
+    else:
+        pattern = f"%{query}%"
+    response = await supabase.table("mext_foods").select("*").ilike("name", pattern).limit(limit).execute()
     rows: list[dict[str, Any]] = response.data or []
     return [_row_to_mext_food(r) for r in rows]
 
@@ -43,31 +52,35 @@ async def get_by_id(supabase: AsyncClient, food_id: UUID) -> MextFood | None:
     return _row_to_mext_food(rows[0])
 
 
-async def upsert_foods(supabase: AsyncClient, foods: list[MextFood]) -> int:
-    """MEXT 食品を一括 upsert する。mext_food_id で重複判定。"""
+async def upsert_foods(supabase: AsyncClient, foods: list[MextFood], batch_size: int = 500) -> int:
+    """MEXT 食品を一括 upsert する。mext_food_id で重複判定。バッチ処理対応。"""
     if not foods:
         return 0
 
-    records = [
-        {
-            "mext_food_id": f.mext_food_id,
-            "name": f.name,
-            "category_code": f.category_code,
-            "category_name": f.category_name,
-            "kcal_per_100g": f.kcal_per_100g,
-            "protein_g_per_100g": f.protein_g_per_100g,
-            "fat_g_per_100g": f.fat_g_per_100g,
-            "carbs_g_per_100g": f.carbs_g_per_100g,
-            "fiber_g_per_100g": f.fiber_g_per_100g,
-            "sodium_mg_per_100g": f.sodium_mg_per_100g,
-            "calcium_mg_per_100g": f.calcium_mg_per_100g,
-            "iron_mg_per_100g": f.iron_mg_per_100g,
-            "raw_data": f.raw_data,
-        }
-        for f in foods
-    ]
-    response = await supabase.table("mext_foods").upsert(records, on_conflict="mext_food_id").execute()
-    return len(response.data or [])
+    total = 0
+    for i in range(0, len(foods), batch_size):
+        batch = foods[i : i + batch_size]
+        records = [
+            {
+                "mext_food_id": f.mext_food_id,
+                "name": f.name,
+                "category_code": f.category_code,
+                "category_name": f.category_name,
+                "kcal_per_100g": f.kcal_per_100g,
+                "protein_g_per_100g": f.protein_g_per_100g,
+                "fat_g_per_100g": f.fat_g_per_100g,
+                "carbs_g_per_100g": f.carbs_g_per_100g,
+                "fiber_g_per_100g": f.fiber_g_per_100g,
+                "sodium_mg_per_100g": f.sodium_mg_per_100g,
+                "calcium_mg_per_100g": f.calcium_mg_per_100g,
+                "iron_mg_per_100g": f.iron_mg_per_100g,
+                "raw_data": f.raw_data,
+            }
+            for f in batch
+        ]
+        response = await supabase.table("mext_foods").upsert(records, on_conflict="mext_food_id").execute()
+        total += len(response.data or [])
+    return total
 
 
 async def get_foods_without_display_name(supabase: AsyncClient, limit: int = 200) -> list[MextFood]:

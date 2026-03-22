@@ -46,12 +46,39 @@ def _parse_float(text: str) -> float:
     """栄養素値をパースする。"Tr", "-", "(0)" 等を 0 として扱う。"""
     if not text:
         return 0.0
-    cleaned = re.sub(r"[()（）]", "", text.strip())
+    cleaned = re.sub(r"[()（）]", "", text.strip()).replace(",", "")
+    cleaned = cleaned.replace("＜", "").replace("<", "")
     cleaned = cleaned.replace("Tr", "0").replace("tr", "0").replace("-", "0").replace("—", "0")
     try:
         return float(cleaned)
     except ValueError:
         return 0.0
+
+
+def _extract_row_value_text(row: BeautifulSoup, unit: str) -> str:
+    """栄養素行から「値」を優先的に抽出する。"""
+    num_cell = row.select_one("td.num")
+    if num_cell:
+        v = num_cell.get_text(strip=True)
+        if v:
+            return v
+
+    marker_cell = row.select_one("td.marker")
+    if marker_cell:
+        v = marker_cell.get_text(strip=True)
+        if v and v != unit:
+            return v
+
+    # クラス構造が変わった場合のフォールバック:
+    # 行内セルから数値らしいトークンを選ぶ（単位文字列は除外）
+    tokens = [td.get_text(strip=True) for td in row.select("td")]
+    for token in tokens:
+        if not token or token == unit:
+            continue
+        if re.search(r"\d", token) or token in {"Tr", "tr", "-", "—"}:
+            return token
+
+    return ""
 
 
 def parse_food_detail(html: str, item_no: str) -> MextFood | None:
@@ -104,14 +131,13 @@ def parse_food_detail(html: str, item_no: str) -> MextFood | None:
     # 現行 fooddb レイアウト: td.pr_name と td.num / td.marker の組
     for row in soup.select("table tr"):
         name_cell = row.select_one("td.pr_name")
-        value_cell = row.select_one("td.num, td.marker")
-        if not name_cell or not value_cell:
+        if not name_cell:
             continue
 
         label = name_cell.get_text(strip=True)
         unit_cell = row.select_one("td.pr_unit")
         unit = unit_cell.get_text(strip=True) if unit_cell else ""
-        value_text = value_cell.get_text(strip=True)
+        value_text = _extract_row_value_text(row, unit)
         raw_data[label] = value_text
         parsed_any = True
 
@@ -172,7 +198,7 @@ def parse_food_detail(html: str, item_no: str) -> MextFood | None:
         sodium_mg_per_100g=sodium,
         calcium_mg_per_100g=calcium,
         iron_mg_per_100g=iron,
-        raw_data=raw_data,
+        raw_data={"source": "scrape", **raw_data},
     )
 
 

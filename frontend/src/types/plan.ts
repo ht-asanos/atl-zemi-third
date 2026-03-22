@@ -31,15 +31,32 @@ export interface WeeklyPlanRequest {
   start_date: string
   staple_name?: string
   mode?: 'classic' | 'recipe'
+  recipe_filters?: RecipeFilters
 }
 
 export interface PatchMealRequest {
   staple_name: string
 }
 
+export interface PatchRecipeRequest {
+  recipe_filters?: RecipeFilters
+}
+
+export interface RecipeFilters {
+  allowed_sources: Array<'rakuten' | 'youtube'>
+  prefer_favorites: boolean
+  exclude_disliked: boolean
+  prefer_variety: boolean
+}
+
 export interface PlanMeta {
   mode: string | null
   staple_name: string | null
+  recipe_filters?: RecipeFilters | null
+  validation?: Record<string, unknown> | null
+  validation_issues?: string[] | null
+  duplicate_count?: number | null
+  candidate_pool_size?: number | null
 }
 
 export interface DailyPlanResponse {
@@ -59,6 +76,8 @@ export interface RecipeInPlan {
   title: string
   image_url?: string
   recipe_url: string
+  youtube_video_id?: string | null
+  recipe_source?: 'rakuten' | 'youtube' | string
   cooking_minutes?: number | null
   nutrition_per_serving?: {
     kcal: number

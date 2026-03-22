@@ -3,10 +3,11 @@ from uuid import UUID
 
 from app.dependencies.auth import get_current_user_id
 from app.dependencies.supabase_client import get_authenticated_supabase
+from app.exceptions import AppException, ErrorCode
 from app.repositories import feedback_repo, food_repo, plan_repo
 from app.schemas.feedback import AdaptationResponse, CreateFeedbackRequest, FeedbackTagResponse
 from app.services import adaptation_engine, tag_extractor
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 
 from supabase import AsyncClient
 
@@ -24,7 +25,7 @@ async def create_feedback(
     # 1. 所有権チェック付きでプラン取得 (raw row for updated_at)
     plan_row = await plan_repo.get_daily_plan_row_by_user(supabase, body.plan_id, user_id)
     if plan_row is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        raise AppException(ErrorCode.PLAN_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Plan not found")
 
     # 2. タグ抽出
     result = await tag_extractor.extract_tags(body.source_text)
@@ -71,9 +72,8 @@ async def create_feedback(
     except Exception as e:
         error_msg = str(e)
         if "40001" in error_msg or "Conflict" in error_msg:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Conflict: plan was modified by another operation",
+            raise AppException(
+                ErrorCode.CONFLICT, status.HTTP_409_CONFLICT, "Conflict: plan was modified by another operation"
             ) from e
         raise
 
@@ -107,7 +107,7 @@ async def get_feedback_tags(
     # 所有権確認
     plan = await plan_repo.get_daily_plan_by_user(supabase, plan_id, user_id)
     if plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+        raise AppException(ErrorCode.PLAN_NOT_FOUND, status.HTTP_404_NOT_FOUND, "Plan not found")
 
     tags: list[FeedbackTagResponse] = await feedback_repo.get_feedback_tags_by_plan(supabase, user_id, plan_id)
     return {"tags": tags}

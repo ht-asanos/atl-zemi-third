@@ -1,4 +1,9 @@
 import { apiClient } from './client'
+import type { RecipeDetail } from '@/types/recipe'
+
+export async function getRecipe(token: string, recipeId: string): Promise<RecipeDetail> {
+  return apiClient<RecipeDetail>(`/recipes/${recipeId}`, {}, token)
+}
 
 export interface FavoriteResponse {
   recipe_id: string

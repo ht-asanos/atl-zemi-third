@@ -306,6 +306,8 @@ def _make_dinner_from_recipe(recipe: Recipe) -> MealSuggestion:
             "title": recipe.title,
             "image_url": recipe.image_url,
             "recipe_url": recipe.recipe_url,
+            "youtube_video_id": recipe.youtube_video_id,
+            "recipe_source": recipe.recipe_source or "rakuten",
             "cooking_minutes": recipe.cooking_minutes,
             "nutrition_per_serving": {
                 "kcal": round(nut.get("kcal", 0), 1),

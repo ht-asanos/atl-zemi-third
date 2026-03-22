@@ -54,6 +54,28 @@ async def test_favorite_recipe_prioritized():
 
 
 @pytest.mark.asyncio
+async def test_prefer_favorites_false_disables_favorite_bonus():
+    budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
+
+    rows = [
+        _make_recipe_row(NON_FAV_RECIPE_ID, protein_g=30.0),
+        _make_recipe_row(FAV_RECIPE_ID, protein_g=32.0),
+    ]
+    supabase = _make_supabase_with_rows(rows)
+
+    result = await get_recipes_for_dinner(
+        supabase,
+        budget,
+        count=2,
+        favorite_ids={FAV_RECIPE_ID},
+        prefer_favorites=False,
+    )
+
+    assert len(result.recipes) == 2
+    assert result.recipes[0].id == NON_FAV_RECIPE_ID
+
+
+@pytest.mark.asyncio
 async def test_favorite_bonus_score_calculation():
     """FAVORITE_BONUS 定数を使ったスコア計算の検証。"""
     budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
@@ -141,8 +163,56 @@ async def test_staple_keywords_prioritize_title_match():
 
 
 @pytest.mark.asyncio
+async def test_allowed_sources_filters_to_youtube():
+    budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
+    youtube_id = uuid4()
+    rakuten_id = uuid4()
+    rows = [
+        {
+            **_make_recipe_row_with_tags(rakuten_id, protein_g=30.0, title="楽天レシピ"),
+            "recipe_url": "https://recipe.rakuten.co.jp/recipe/123/",
+            "recipe_source": "rakuten",
+        },
+        {
+            **_make_recipe_row_with_tags(youtube_id, protein_g=31.0, title="YouTubeレシピ"),
+            "recipe_url": "https://www.youtube.com/watch?v=abc123",
+            "recipe_source": "youtube",
+        },
+    ]
+    supabase = _make_supabase_with_rows(rows)
+
+    result = await get_recipes_for_dinner(supabase, budget, count=2, allowed_sources=["youtube"])
+
+    assert len(result.recipes) == 1
+    assert result.recipes[0].id == youtube_id
+
+
+@pytest.mark.asyncio
+async def test_exclude_disliked_removes_disliked_candidates():
+    budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
+    liked_candidate = uuid4()
+    disliked_candidate = uuid4()
+    rows = [
+        _make_recipe_row_with_tags(disliked_candidate, protein_g=30.0, title="除外対象"),
+        _make_recipe_row_with_tags(liked_candidate, protein_g=31.0, title="採用候補"),
+    ]
+    supabase = _make_supabase_with_rows(rows)
+
+    result = await get_recipes_for_dinner(
+        supabase,
+        budget,
+        count=2,
+        disliked_ids={disliked_candidate},
+        exclude_disliked=True,
+    )
+
+    assert len(result.recipes) == 1
+    assert result.recipes[0].id == liked_candidate
+
+
+@pytest.mark.asyncio
 async def test_staple_filter_fallback_when_insufficient():
-    """主食指定時は不足しても主食一致のみで埋めること。"""
+    """主食一致不足時は非一致レシピで補完する（同一タイトル重複はしない）。"""
     budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
 
     fallback_id = uuid4()
@@ -156,9 +226,12 @@ async def test_staple_filter_fallback_when_insufficient():
     result = await get_recipes_for_dinner(supabase, budget, count=2, staple_tags=["うどん"], staple_keywords=["うどん"])
 
     assert len(result.recipes) == 2
-    assert all(any(t in (r.tags or []) for t in ["うどん"]) or "うどん" in (r.title or "") for r in result.recipes)
-    assert result.staple_match_count == 2
-    assert result.staple_fallback_used is False
+    assert (
+        sum(1 for r in result.recipes if any(t in (r.tags or []) for t in ["うどん"]) or "うどん" in (r.title or ""))
+        == 1
+    )
+    assert result.staple_match_count == 1
+    assert result.staple_fallback_used is True
 
 
 # --- 後方互換テスト ---
@@ -254,14 +327,32 @@ async def test_metadata_values():
 
     result = await get_recipes_for_dinner(supabase, budget, count=3, staple_tags=["うどん"])
 
-    assert result.staple_match_count == 3
+    assert result.staple_match_count == 1
     assert result.total_count == 3
-    assert result.staple_fallback_used is False
+    assert result.staple_fallback_used is True
+
+
+@pytest.mark.asyncio
+async def test_no_duplicate_recipe_ids_when_staple_candidates_shortage():
+    """主食候補不足時でも同一 recipe_id を重複させないこと。"""
+    budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
+    staple_id = uuid4()
+    other_id = uuid4()
+    rows = [
+        _make_recipe_row_with_tags(staple_id, protein_g=30.0, tags=["うどん"], title="肉うどん"),
+        _make_recipe_row_with_tags(other_id, protein_g=30.0, tags=["カレー"], title="カレー"),
+    ]
+    supabase = _make_supabase_with_rows(rows)
+
+    result = await get_recipes_for_dinner(supabase, budget, count=2, staple_tags=["うどん"], staple_keywords=["うどん"])
+
+    assert len(result.recipes) == 2
+    assert len({r.id for r in result.recipes}) == 2
 
 
 @pytest.mark.asyncio
 async def test_staple_filter_guarantees_one_match_when_available():
-    """主食一致が1件でも存在すれば、全件主食一致で返ること（重複許容）。"""
+    """主食一致が1件でも存在すれば、少なくとも1件は主食一致が選ばれること。"""
     budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
 
     matched_out_of_range_id = uuid4()
@@ -287,13 +378,14 @@ async def test_staple_filter_guarantees_one_match_when_available():
     )
 
     assert len(result.recipes) == 2
-    assert all(r.id == matched_out_of_range_id for r in result.recipes)
-    assert result.staple_match_count == 2
+    assert any(r.id == matched_out_of_range_id for r in result.recipes)
+    assert result.staple_match_count >= 1
+    assert len({r.id for r in result.recipes}) == 2
 
 
 @pytest.mark.asyncio
 async def test_staple_filter_returns_only_matching_recipes_even_with_non_matching_pfc_candidates():
-    """主食指定時はPFC一致の非主食候補があっても採用しないこと。"""
+    """主食指定時でも不足時は非主食候補を補完採用すること。"""
     budget = PFCBudget(protein_g=30.0, fat_g=20.0, carbs_g=50.0)
 
     matched_pfc_id = uuid4()
@@ -307,5 +399,7 @@ async def test_staple_filter_returns_only_matching_recipes_even_with_non_matchin
     result = await get_recipes_for_dinner(supabase, budget, count=2, staple_tags=["うどん"], staple_keywords=["うどん"])
 
     assert len(result.recipes) == 2
-    assert all(r.id == matched_pfc_id for r in result.recipes)
-    assert result.staple_match_count == 2
+    assert any(r.id == matched_pfc_id for r in result.recipes)
+    assert any(r.id == non_match_pfc_id for r in result.recipes)
+    assert result.staple_match_count == 1
+    assert result.staple_fallback_used is True

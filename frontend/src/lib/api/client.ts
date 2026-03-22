@@ -3,7 +3,8 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 export class ApiError extends Error {
   constructor(
     public status: number,
-    public detail: string
+    public detail: string,
+    public errorCode?: string
   ) {
     super(detail)
     this.name = 'ApiError'
@@ -31,7 +32,8 @@ export async function apiClient<T>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new ApiError(res.status, body.detail || res.statusText)
+    const detail = typeof body.detail === 'string' ? body.detail : body.detail?.message || res.statusText
+    throw new ApiError(res.status, detail, body.error_code)
   }
 
   if (res.status === 204) return undefined as T

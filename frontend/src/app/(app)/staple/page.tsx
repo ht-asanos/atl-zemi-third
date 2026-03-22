@@ -11,6 +11,8 @@ import { InlineSpinner, Spinner } from '@/components/ui/spinner'
 import { StepIndicator } from '@/components/ui/step-indicator'
 import { toast } from 'sonner'
 import { getNextMondayUTC } from '@/lib/date-utils'
+import { getErrorInfo } from '@/lib/errors'
+import { ApiError } from '@/lib/api/client'
 import { Info } from 'lucide-react'
 import type { FoodItem } from '@/types/food'
 
@@ -66,9 +68,10 @@ function StapleContent() {
         staple_name: selected || undefined,
       })
       router.push('/plans')
-    } catch {
-      setError('プラン生成に失敗しました')
-      toast.error('プラン生成に失敗しました')
+    } catch (err) {
+      const info = err instanceof ApiError ? getErrorInfo(err.errorCode) : getErrorInfo()
+      setError(info.message)
+      toast.error(info.message)
     } finally {
       setLoading(false)
     }

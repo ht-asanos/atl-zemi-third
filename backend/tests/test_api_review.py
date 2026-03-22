@@ -45,7 +45,7 @@ class TestListReviewIngredients:
             }
         ]
 
-        with patch("app.routers.admin.recipe_repo.get_ingredients_for_review") as mock_get:
+        with patch("app.routers.admin_review.recipe_repo.get_ingredients_for_review") as mock_get:
             mock_get.return_value = (mock_data, 1)
             resp = client.get("/admin/review/ingredients", headers=_auth_header())
             assert resp.status_code == 200
@@ -62,9 +62,9 @@ class TestUpdateReviewIngredient:
         recipe_id = uuid4()
         mext_food_id = uuid4()
 
-        with patch("app.routers.admin.recipe_repo.update_ingredient_match") as mock_update:
+        with patch("app.routers.admin_review.recipe_repo.update_ingredient_match") as mock_update:
             mock_update.return_value = recipe_id
-            with patch("app.routers.admin.calculate_recipe_nutrition") as mock_calc:
+            with patch("app.routers.admin_review.calculate_recipe_nutrition") as mock_calc:
                 from app.models.food import NutritionStatus
                 from app.services.ingredient_matcher import NutritionResult
 
@@ -88,9 +88,9 @@ class TestUpdateReviewIngredient:
         ingredient_id = uuid4()
         recipe_id = uuid4()
 
-        with patch("app.routers.admin.recipe_repo.update_ingredient_match") as mock_update:
+        with patch("app.routers.admin_review.recipe_repo.update_ingredient_match") as mock_update:
             mock_update.return_value = recipe_id
-            with patch("app.routers.admin.calculate_recipe_nutrition") as mock_calc:
+            with patch("app.routers.admin_review.calculate_recipe_nutrition") as mock_calc:
                 from app.models.food import NutritionStatus
                 from app.services.ingredient_matcher import NutritionResult
 
@@ -110,7 +110,7 @@ class TestUpdateReviewIngredient:
     def test_not_found_returns_404(self):
         ingredient_id = uuid4()
 
-        with patch("app.routers.admin.recipe_repo.update_ingredient_match") as mock_update:
+        with patch("app.routers.admin_review.recipe_repo.update_ingredient_match") as mock_update:
             mock_update.return_value = None
             resp = client.patch(
                 f"/admin/review/ingredients/{ingredient_id}",

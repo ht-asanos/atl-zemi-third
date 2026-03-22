@@ -8,7 +8,7 @@ import {
 } from '@/lib/api/admin'
 import { ApiError } from '@/lib/api/client'
 import { useAuth } from '@/providers/auth-provider'
-import MextFoodSearch from './MextFoodSearch'
+import MextFoodSearch from './mext-food-search'
 
 export default function ReviewTable() {
   const { session } = useAuth()

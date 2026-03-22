@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useAuth } from '@/providers/auth-provider'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,7 @@ import {
 } from '@/lib/api/recipes'
 
 const ReviewTable = dynamic(
-  () => import('@/components/admin/ReviewTable'),
+  () => import('@/components/admin/review-table'),
   { ssr: false }
 )
 
@@ -66,7 +67,12 @@ export default function AdminReviewPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <h1 className="mb-6 text-2xl font-bold">食材マッチング レビュー</h1>
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">食材マッチング レビュー</h1>
+        <Link href="/admin/youtube" className="text-sm text-blue-600 hover:underline">
+          YouTube レシピ管理へ
+        </Link>
+      </div>
 
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>

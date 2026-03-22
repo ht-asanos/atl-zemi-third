@@ -1,22 +1,29 @@
 'use client'
 
+import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
 import { DAY_NAMES } from '@/lib/constants'
+import { getTodayLocal } from '@/lib/date-utils'
 import { MealSection } from './meal-section'
 import { WorkoutSection } from './workout-section'
+import { DailyNutritionSummary } from './daily-nutrition-summary'
 import type { DailyPlanResponse } from '@/types/plan'
+import type { GoalResponse } from '@/types/goal'
 
 interface DailyPlanCardProps {
   plan: DailyPlanResponse
+  goal?: GoalResponse | null
   onChangeMeal?: (planId: string) => void
   onChangeRecipe?: (planId: string) => void
   onToggleFavorite?: (recipeId: string) => void
+  onViewRecipe?: (recipeId: string) => void
   favoriteRecipeIds?: Set<string>
 }
 
-export function DailyPlanCard({ plan, onChangeMeal, onChangeRecipe, onToggleFavorite, favoriteRecipeIds }: DailyPlanCardProps) {
+export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onToggleFavorite, onViewRecipe, favoriteRecipeIds }: DailyPlanCardProps) {
   const d = new Date(plan.plan_date + 'T00:00:00')
   const dayLabel = `${d.getMonth() + 1}/${d.getDate()} (${DAY_NAMES[d.getDay()]})`
+  const isToday = plan.plan_date === getTodayLocal()
 
   // recipe モード判定: meal_plan 内に meal_type があれば recipe モード
   const isRecipeMode = plan.meal_plan.some((m) => m.meal_type != null)
@@ -25,14 +32,24 @@ export function DailyPlanCard({ plan, onChangeMeal, onChangeRecipe, onToggleFavo
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-xl font-bold">{dayLabel}</h3>
-        {!isRecipeMode && onChangeMeal && (
-          <button
-            onClick={() => onChangeMeal(plan.id)}
-            className="text-sm text-primary underline"
-          >
-            主食を変更
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {isToday && (
+            <Link
+              href="/daily"
+              className="text-sm text-primary underline"
+            >
+              今日のログを記録
+            </Link>
+          )}
+          {!isRecipeMode && onChangeMeal && (
+            <button
+              onClick={() => onChangeMeal(plan.id)}
+              className="text-sm text-primary underline"
+            >
+              主食を変更
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -48,10 +65,13 @@ export function DailyPlanCard({ plan, onChangeMeal, onChangeRecipe, onToggleFavo
                 : undefined
             }
             onToggleFavorite={onToggleFavorite}
+            onViewRecipe={onViewRecipe}
             favoriteRecipeIds={favoriteRecipeIds}
           />
         ))}
       </div>
+
+      <DailyNutritionSummary meals={plan.meal_plan} goal={goal} />
 
       <Separator />
 

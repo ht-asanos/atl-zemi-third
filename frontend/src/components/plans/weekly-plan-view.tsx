@@ -9,17 +9,20 @@ import { DAY_SHORT } from '@/lib/constants'
 import { DailyPlanCard } from './daily-plan-card'
 import type { DailyPlanResponse } from '@/types/plan'
 import type { FoodItem } from '@/types/food'
+import type { GoalResponse } from '@/types/goal'
 
 interface WeeklyPlanViewProps {
   plans: DailyPlanResponse[]
   staples: FoodItem[]
-  onPatchMeal: (planId: string, stapleName: string) => Promise<void>
+  goal?: GoalResponse | null
+  onPatchMeal?: (planId: string, stapleName: string) => Promise<void>
   onChangeRecipe?: (planId: string) => void
   onToggleFavorite?: (recipeId: string) => void
+  onViewRecipe?: (recipeId: string) => void
   favoriteRecipeIds?: Set<string>
 }
 
-export function WeeklyPlanView({ plans, staples, onPatchMeal, onChangeRecipe, onToggleFavorite, favoriteRecipeIds }: WeeklyPlanViewProps) {
+export function WeeklyPlanView({ plans, staples, goal, onPatchMeal, onChangeRecipe, onToggleFavorite, onViewRecipe, favoriteRecipeIds }: WeeklyPlanViewProps) {
   const [changingPlanId, setChangingPlanId] = useState<string | null>(null)
   const [selectedStaple, setSelectedStaple] = useState('')
   const [patching, setPatching] = useState(false)
@@ -33,7 +36,7 @@ export function WeeklyPlanView({ plans, staples, onPatchMeal, onChangeRecipe, on
     if (!changingPlanId || !selectedStaple) return
     setPatching(true)
     try {
-      await onPatchMeal(changingPlanId, selectedStaple)
+      await onPatchMeal?.(changingPlanId, selectedStaple)
       setChangingPlanId(null)
     } finally {
       setPatching(false)
@@ -95,9 +98,11 @@ export function WeeklyPlanView({ plans, staples, onPatchMeal, onChangeRecipe, on
           <TabsContent key={plan.id} value={String(i)}>
             <DailyPlanCard
               plan={plan}
-              onChangeMeal={handleChangeMeal}
+              goal={goal}
+              onChangeMeal={onPatchMeal ? handleChangeMeal : undefined}
               onChangeRecipe={onChangeRecipe}
               onToggleFavorite={onToggleFavorite}
+              onViewRecipe={onViewRecipe}
               favoriteRecipeIds={favoriteRecipeIds}
             />
           </TabsContent>

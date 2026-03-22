@@ -17,6 +17,7 @@ _PREFIX_HINT_PATTERN = re.compile(r"^\s*(あれば|あれば、|お好みで|お
 _LEADING_SYMBOL_PATTERN = re.compile(r"^\s*〇+")
 _LEADING_PUNCT_PATTERN = re.compile(r"^[、。,.､，\s\u3000]+")
 _ALT_SEP_PATTERN = re.compile(r"\s*(?:/|／|or|OR|でも|又は)\s*")
+_NOISE_TOKEN_PATTERN = re.compile(r"^(?:or|OR|または|又は|もしくは|あるいは|お好みで|あれば)$")
 
 
 def clean_ingredient_name(name: str) -> str:
@@ -99,6 +100,8 @@ def normalize_ingredient_candidates(name: str) -> list[str]:
         c = canonicalize_ingredient(p)
         # 区切り記号や全角空白が混入した先頭ノイズを最終的に除去する
         c = c.lstrip("、。,.､， \u3000").strip()
+        if _NOISE_TOKEN_PATTERN.match(c):
+            continue
         if not c:
             continue
         if c in seen:

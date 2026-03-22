@@ -2,6 +2,7 @@ import { apiClient } from './client'
 import type {
   DailyPlanResponse,
   PatchMealRequest,
+  PatchRecipeRequest,
   SetShoppingListCheckRequest,
   ShoppingListChecksResponse,
   ShoppingListResponse,
@@ -68,10 +69,12 @@ export async function setShoppingListCheck(
 
 export async function patchRecipe(
   token: string,
-  planId: string
+  planId: string,
+  data?: PatchRecipeRequest
 ): Promise<DailyPlanResponse> {
   return apiClient<DailyPlanResponse>(`/plans/${planId}/recipe`, {
     method: 'PATCH',
+    body: data ? JSON.stringify(data) : undefined,
   }, token)
 }
 
