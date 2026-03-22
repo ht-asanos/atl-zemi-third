@@ -14,6 +14,7 @@ from app.services.rakuten_recipe import (
     fetch_multiple_categories,
     find_category_ids_by_keywords,
 )
+from app.services.recipe_maintenance import prune_non_meal_recipes, run_recipe_maintenance
 from app.services.recipe_quality_gate import filter_meal_like_recipes
 from app.services.recipe_refresh import (
     backfill_missing_normalized_ingredients,
@@ -146,64 +147,34 @@ async def cmd_prune_non_meal_recipes(*, execute: bool = False):
     --execute フラグで実削除。削除前に prune_candidates.json を出力（rollback 用）。
     """
     supabase = await _get_service_client()
-
-    resp = await supabase.table("recipes").select("id,title,description,tags").execute()
-    rows = resp.data or []
-    if not rows:
-        print("recipes が存在しません")
-        return
-
-    ing_resp = await supabase.table("recipe_ingredients").select("recipe_id,ingredient_name").execute()
-    ing_rows = ing_resp.data or []
-    ing_map: dict[str, list[dict]] = {}
-    for row in ing_rows:
-        rid = row.get("recipe_id")
-        if not rid:
-            continue
-        ing_map.setdefault(rid, []).append({"ingredient_name": row.get("ingredient_name", ""), "amount_text": None})
-
-    recipes = []
-    for r in rows:
-        recipes.append(
-            {
-                "id": r.get("id"),
-                "title": r.get("title", ""),
-                "description": r.get("description", ""),
-                "tags": r.get("tags") or [],
-                "ingredients": ing_map.get(r.get("id"), []),
-            }
-        )
-
-    gate = await filter_meal_like_recipes(recipes)
-    reject_ids = [x["recipe"].get("id") for x in gate.rejected if x["recipe"].get("id")]
-    reject_ids = [x for x in reject_ids if x]
-
-    print(f"総レシピ: {len(recipes)} / 除外候補: {len(reject_ids)}")
-    for x in gate.rejected:
-        print(f"  - {x['recipe'].get('title', '?')} (reason={x.get('reason', '?')})")
-
-    if not reject_ids:
-        print("削除対象なし")
-        return
-
-    # rollback 用 JSON 出力
-    output_path = "prune_candidates.json"
-    with open(output_path, "w") as f:
-        json.dump(
-            [{"id": x["recipe"].get("id"), "title": x["recipe"].get("title")} for x in gate.rejected],
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
-    print(f"削除候補を {output_path} に出力しました")
-
+    result = await prune_non_meal_recipes(
+        supabase,
+        execute=execute,
+        output_path="prune_candidates.json",
+    )
+    print(f"総レシピ: {result['total_recipes']} / 除外候補: {result['candidate_count']}")
+    if result["candidate_titles"]:
+        print("候補サンプル:", ", ".join(result["candidate_titles"]))
     if not execute:
+        print("削除候補を prune_candidates.json に出力しました")
         print("\n[dry-run] 実際の削除は --execute オプションで実行してください")
         return
+    print(f"非食事レシピを削除: {result['deleted_count']} 件")
 
-    await supabase.table("recipe_ingredients").delete().in_("recipe_id", reject_ids).execute()
-    await supabase.table("recipes").delete().in_("id", reject_ids).execute()
-    print(f"非食事レシピを削除: {len(reject_ids)} 件")
+
+async def cmd_run_recipe_maintenance(*, triggered_by: str):
+    """レシピ保守ジョブを順次実行し、job_logs に結果を残す。"""
+    result = await run_recipe_maintenance(triggered_by=triggered_by)
+    print(f"run_id={result.run_id} triggered_by={result.triggered_by}")
+    for job in result.jobs:
+        status = "success" if job.succeeded else "failed"
+        print(f"- {job.job_name}: {status} attempts={job.attempt_count}")
+        if job.summary:
+            print(f"  summary={json.dumps(job.summary, ensure_ascii=False)}")
+        if job.error_message:
+            print(f"  error={job.error_message}")
+    if result.has_failures:
+        sys.exit(1)
 
 
 async def cmd_repair_youtube_nutrition():

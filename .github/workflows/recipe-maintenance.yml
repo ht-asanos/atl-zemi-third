@@ -1,0 +1,44 @@
+name: Recipe Maintenance
+
+on:
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+jobs:
+  recipe-maintenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: backend
+
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      RAKUTEN_APP_ID: ${{ secrets.RAKUTEN_APP_ID }}
+      RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync backend dependencies
+        run: uv sync --frozen
+
+      - name: Run recipe maintenance
+        env:
+          TRIGGERED_BY: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'schedule' }}
+        run: |
+          PYTHONPATH=src uv run python -m app.services.data_loader \
+            run-recipe-maintenance --triggered-by "${TRIGGERED_BY}"

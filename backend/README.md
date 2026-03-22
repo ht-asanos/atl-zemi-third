@@ -152,6 +152,10 @@ PYTHONUNBUFFERED=1 PYTHONPATH=src uv run python -m app.services.data_loader \
 # 非食事レシピを実削除
 PYTHONUNBUFFERED=1 PYTHONPATH=src uv run python -m app.services.data_loader \
   prune-non-meal-recipes --execute
+
+# 定期保守ジョブを手動実行（job_logs に記録）
+PYTHONUNBUFFERED=1 PYTHONPATH=src uv run python -m app.services.data_loader \
+  run-recipe-maintenance --triggered-by manual
 ```
 
 運用メモ:
@@ -159,6 +163,9 @@ PYTHONUNBUFFERED=1 PYTHONPATH=src uv run python -m app.services.data_loader \
 - `repair-youtube-nutrition` は既存 YouTube レシピの食材マッチングと栄養計算をやり直します。
 - `rebuild-recipe-ingredients` は `recipe_ingredients` をレシピ単位で削除して再構築します。重複行や古い raw 行が疑われるときに使います。
 - `prune-non-meal-recipes` は Gemini 品質ゲートで既存レシピを再判定します。まず dry-run を見てから `--execute` を使ってください。
+- `run-recipe-maintenance` は `refresh-recipes` → `backfill` → `prune-non-meal-recipes --execute` を順番に実行し、各試行を `job_logs` に保存します。
+- GitHub Actions では `.github/workflows/recipe-maintenance.yml` を使います。必要な secrets は `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RAKUTEN_APP_ID`, `RAKUTEN_ACCESS_KEY`, `GOOGLE_API_KEY` です。
+- 定期ジョブが失敗した場合は GitHub Actions の failed run と `job_logs` を見て、どのジョブが何回目で失敗したかを確認してください。
 - `upsert_recipe()` は `recipes` テーブルだけを更新し、材料行の保存は行いません。`recipe_ingredients` の正規な更新経路は `match_recipe_ingredients()` です。
 - `match_recipe_ingredients()` は対象レシピの既存材料行を毎回置換してから insert するため、raw 材料とマッチ済み材料の二重登録を防ぎます。
 

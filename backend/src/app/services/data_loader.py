@@ -18,6 +18,7 @@ from app.services.cli.recipe_commands import (
     cmd_rebuild_recipe_ingredients,
     cmd_refresh_recipes,
     cmd_repair_youtube_nutrition,
+    cmd_run_recipe_maintenance,
 )
 from app.services.cli.youtube_commands import cmd_check_youtube_transcript, cmd_fetch_youtube_recipes
 
@@ -27,7 +28,8 @@ def main():
         print(
             "Usage: python -m app.services.data_loader "
             "<init|backfill|refresh-recipes|fetch-recipes-by-keyword|fetch-youtube-recipes|check-youtube-transcript|"
-            "repair-youtube-nutrition|rebuild-recipe-ingredients|update-display-names|prune-non-meal-recipes|normalize-ingredient-backfill|load-mext-excel>"
+            "repair-youtube-nutrition|rebuild-recipe-ingredients|update-display-names|prune-non-meal-recipes|"
+            "normalize-ingredient-backfill|load-mext-excel|run-recipe-maintenance>"
         )
         sys.exit(1)
 
@@ -45,6 +47,7 @@ def main():
         "prune-non-meal-recipes": cmd_prune_non_meal_recipes,
         "normalize-ingredient-backfill": cmd_normalize_ingredient_backfill,
         "load-mext-excel": cmd_load_mext_excel,
+        "run-recipe-maintenance": cmd_run_recipe_maintenance,
     }
 
     if command not in commands:
@@ -56,6 +59,13 @@ def main():
     if command == "prune-non-meal-recipes":
         execute = "--execute" in sys.argv[2:]
         asyncio.run(commands[command](execute=execute))
+    elif command == "run-recipe-maintenance":
+        triggered_by = "manual"
+        for idx, arg in enumerate(sys.argv[2:], start=2):
+            if arg == "--triggered-by" and idx + 1 < len(sys.argv):
+                triggered_by = sys.argv[idx + 1]
+                break
+        asyncio.run(commands[command](triggered_by=triggered_by))
     else:
         asyncio.run(commands[command]())
 
