@@ -22,6 +22,7 @@ import { ShoppingList } from '@/components/plans/shopping-list'
 import { Button } from '@/components/ui/button'
 import { InlineSpinner } from '@/components/ui/spinner'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/ui/empty-state'
 import { toast } from 'sonner'
 import { ApiError } from '@/lib/api/client'
 import { getErrorInfo } from '@/lib/errors'
@@ -313,31 +314,12 @@ export default function PlansContent() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setWeekOffset((prev) => prev - 1)}
-        >
-          &larr; 前の週
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          {startDate} 〜
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setWeekOffset((prev) => prev + 1)}
-          disabled={weekOffset >= 0}
-        >
-          次の週 &rarr;
-        </Button>
-      </div>
-
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">
-          週間メニュー{isPastWeek && ' (過去)'}
+    <div className="mx-auto max-w-3xl px-4 pb-8 pt-6 sm:px-6">
+      {/* ページヘッダー */}
+      <div className="mb-5 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">
+          週間メニュー
+          {isPastWeek && <span className="ml-2 text-sm font-normal text-muted-foreground">(過去)</span>}
         </h1>
         {!isPastWeek && plans.length > 0 && (
           <Button
@@ -351,6 +333,30 @@ export default function PlansContent() {
         )}
       </div>
 
+      {/* 週ナビゲーション */}
+      <div className="mb-5 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setWeekOffset((prev) => prev - 1)}
+          className="text-xs"
+        >
+          ← 前の週
+        </Button>
+        <span className="text-xs font-medium text-muted-foreground">
+          {startDate} 〜
+        </span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setWeekOffset((prev) => prev + 1)}
+          disabled={weekOffset >= 0}
+          className="text-xs"
+        >
+          次の週 →
+        </Button>
+      </div>
+
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
           {error}
@@ -358,42 +364,50 @@ export default function PlansContent() {
       )}
 
       {isEmpty ? (
-        <div className="flex flex-col items-center gap-4 rounded-md border p-8 text-center">
-          <CalendarX2 className="h-12 w-12 text-muted-foreground" />
-          <p className="text-muted-foreground">この週のプランはありません</p>
-          {isPastWeek ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setWeekOffset(0)}
-            >
-              今週に戻る
-            </Button>
-          ) : (
-            <Link
-              href="/staple?from=plans"
-              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
-            >
-              プランを作成する
-            </Link>
-          )}
-        </div>
+        <EmptyState
+          icon={<CalendarX2 className="h-10 w-10" />}
+          title="この週のプランはありません"
+          action={
+            isPastWeek ? (
+              <Button variant="outline" size="sm" onClick={() => setWeekOffset(0)}>
+                今週に戻る
+              </Button>
+            ) : (
+              <Link
+                href="/staple?from=plans"
+                className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90"
+              >
+                プランを作成する
+              </Link>
+            )
+          }
+        />
       ) : (
         <>
           {isRecipeMode && (
-            <div className="mb-4 flex gap-2">
-              <Button
-                variant={activeTab === 'plan' ? 'default' : 'outline'}
+            <div className="mb-4 flex gap-1 rounded-lg border border-border bg-muted/30 p-1">
+              <button
+                type="button"
                 onClick={() => setActiveTab('plan')}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === 'plan'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
                 週間プラン
-              </Button>
-              <Button
-                variant={activeTab === 'shopping' ? 'default' : 'outline'}
+              </button>
+              <button
+                type="button"
                 onClick={handleShowShoppingList}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                  activeTab === 'shopping'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
                 買い物リスト
-              </Button>
+              </button>
             </div>
           )}
 
