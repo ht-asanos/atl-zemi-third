@@ -20,7 +20,11 @@ from app.services.cli.recipe_commands import (
     cmd_repair_youtube_nutrition,
     cmd_run_recipe_maintenance,
 )
-from app.services.cli.youtube_commands import cmd_check_youtube_transcript, cmd_fetch_youtube_recipes
+from app.services.cli.youtube_commands import (
+    cmd_check_youtube_transcript,
+    cmd_fetch_youtube_recipes,
+    cmd_ingest_training_progressions,
+)
 
 
 def main():
@@ -29,6 +33,7 @@ def main():
             "Usage: python -m app.services.data_loader "
             "<init|backfill|refresh-recipes|fetch-recipes-by-keyword|fetch-youtube-recipes|check-youtube-transcript|"
             "repair-youtube-nutrition|rebuild-recipe-ingredients|update-display-names|prune-non-meal-recipes|"
+            "ingest-training-progressions|"
             "normalize-ingredient-backfill|load-mext-excel|run-recipe-maintenance>"
         )
         sys.exit(1)
@@ -41,6 +46,7 @@ def main():
         "fetch-recipes-by-keyword": cmd_fetch_recipes_by_keyword,
         "fetch-youtube-recipes": cmd_fetch_youtube_recipes,
         "check-youtube-transcript": cmd_check_youtube_transcript,
+        "ingest-training-progressions": cmd_ingest_training_progressions,
         "repair-youtube-nutrition": cmd_repair_youtube_nutrition,
         "rebuild-recipe-ingredients": cmd_rebuild_recipe_ingredients,
         "update-display-names": cmd_update_display_names,

@@ -3,7 +3,8 @@ from datetime import date, timedelta
 from statistics import fmean
 from uuid import UUID
 
-from app.repositories import feedback_repo, log_repo, plan_repo
+from app.repositories import feedback_event_repo, feedback_repo, log_repo, plan_repo
+from app.schemas.feedback import FeedbackEventDetailResponse
 from app.schemas.log import WorkoutLogResponse
 
 from supabase import AsyncClient
@@ -66,6 +67,33 @@ def _forearm_completion_rate(logs: list[WorkoutLogResponse], forearm_ids: set[st
     return completed / len(target)
 
 
+def _lower_scale_one_step(scale: float) -> float:
+    if scale >= 1.05:
+        return 1.0
+    if scale >= 1.0:
+        return 0.95
+    if scale >= 0.95:
+        return 0.9
+    return 0.9
+
+
+def _event_has_tag(event: FeedbackEventDetailResponse, tag_name: str) -> bool:
+    return any(tag.tag == tag_name for tag in event.tags)
+
+
+def _has_negative_workout_feedback(events: list[FeedbackEventDetailResponse]) -> bool:
+    for event in events:
+        if _event_has_tag(event, "too_hard") or _event_has_tag(event, "cannot_complete_reps"):
+            return True
+        if event.completed is False and event.rpe is not None and event.rpe >= 9.0:
+            return True
+    return False
+
+
+def _has_forearm_sore_feedback(events: list[FeedbackEventDetailResponse]) -> bool:
+    return any(_event_has_tag(event, "forearm_sore") for event in events)
+
+
 async def build_next_week_training_adjustment(
     supabase: AsyncClient,
     user_id: UUID,
@@ -83,10 +111,19 @@ async def build_next_week_training_adjustment(
         return TrainingAdjustment()
 
     logs = await log_repo.get_workout_logs_in_range(supabase, user_id, prev_start, prev_end)
+    workout_feedback_events = await feedback_event_repo.get_feedback_events_in_range(
+        supabase,
+        user_id=user_id,
+        start_date=prev_start,
+        end_date=start_date,
+        domain="workout",
+    )
 
     avg_rpe = _average_rpe(logs)
     completion_rate = _completion_rate(logs)
     scale = _derive_scale(avg_rpe, completion_rate)
+    if _has_negative_workout_feedback(workout_feedback_events):
+        scale = _lower_scale_one_step(scale)
 
     forearm_ids = _extract_forearm_exercise_ids(prev_plans)
     forearm_rate = _forearm_completion_rate(logs, forearm_ids)
@@ -98,6 +135,10 @@ async def build_next_week_training_adjustment(
             has_forearm_sore_tag = True
             break
 
-    protect_forearms = has_forearm_sore_tag or (forearm_rate is not None and forearm_rate < 0.7)
+    protect_forearms = (
+        has_forearm_sore_tag
+        or _has_forearm_sore_feedback(workout_feedback_events)
+        or (forearm_rate is not None and forearm_rate < 0.7)
+    )
 
     return TrainingAdjustment(scale=scale, protect_forearms=protect_forearms)

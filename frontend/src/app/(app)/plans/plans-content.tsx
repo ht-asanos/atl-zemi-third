@@ -27,7 +27,7 @@ import { getErrorInfo } from '@/lib/errors'
 import { getNextMondayUTC } from '@/lib/date-utils'
 import Link from 'next/link'
 import { CalendarX2 } from 'lucide-react'
-import type { DailyPlanResponse, RecipeFilters, ShoppingListResponse } from '@/types/plan'
+import type { DailyPlanResponse, RecipeFilters, ShoppingListResponse, TrainingEquipment } from '@/types/plan'
 import type { FoodItem } from '@/types/food'
 import type { RecipeDetail } from '@/types/recipe'
 import type { GoalResponse } from '@/types/goal'
@@ -38,6 +38,8 @@ const DEFAULT_RECIPE_FILTERS: RecipeFilters = {
   exclude_disliked: true,
   prefer_variety: true,
 }
+
+const DEFAULT_AVAILABLE_EQUIPMENT: TrainingEquipment[] = ['none']
 
 function getWeekStartDate(offset: number): string {
   const base = new Date(getNextMondayUTC() + 'T00:00:00Z')
@@ -83,6 +85,10 @@ export default function PlansContent() {
       exclude_disliked: filters.exclude_disliked ?? true,
       prefer_variety: filters.prefer_variety ?? true,
     }
+  }, [plans])
+  const savedAvailableEquipment = useMemo<TrainingEquipment[]>(() => {
+    const equipment = plans[0]?.plan_meta?.available_equipment
+    return equipment && equipment.length ? equipment : DEFAULT_AVAILABLE_EQUIPMENT
   }, [plans])
 
   useEffect(() => {
@@ -240,7 +246,10 @@ export default function PlansContent() {
     }
   }, [session?.access_token, startDate])
 
-  const handleRegenerate = async (recipeFilters: RecipeFilters) => {
+  const handleRegenerate = async (
+    recipeFilters: RecipeFilters,
+    availableEquipment: TrainingEquipment[] = DEFAULT_AVAILABLE_EQUIPMENT
+  ) => {
     if (!session?.access_token) return
     setShowRegenerateDialog(false)
     setRegenerating(true)
@@ -257,6 +266,7 @@ export default function PlansContent() {
         mode: mode as 'classic' | 'recipe',
         staple_name: stapleName,
         recipe_filters: recipeFilters,
+        available_equipment: availableEquipment,
       })
       setPlans(result.plans)
       setShoppingList(null)
@@ -419,6 +429,7 @@ export default function PlansContent() {
         description="現在のプランを上書きします。レシピソースや再生成条件を選んでください。"
         mode="weekly"
         initialFilters={savedRecipeFilters}
+        initialEquipment={savedAvailableEquipment}
         submitting={regenerating}
         onConfirm={handleRegenerate}
         onCancel={() => setShowRegenerateDialog(false)}
@@ -430,6 +441,7 @@ export default function PlansContent() {
         description="現在のレシピを除外して、選択した条件の中から代替レシピを探します。"
         mode="single"
         initialFilters={savedRecipeFilters}
+        initialEquipment={savedAvailableEquipment}
         submitting={regenerating}
         onConfirm={handleRecipeSwapConfirm}
         onCancel={() => setPendingRecipePlanId(null)}

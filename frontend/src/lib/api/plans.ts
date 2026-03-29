@@ -6,6 +6,8 @@ import type {
   SetShoppingListCheckRequest,
   ShoppingListChecksResponse,
   ShoppingListResponse,
+  TrainingEquipment,
+  TrainingSkillTreeResponse,
   WeeklyPlanRequest,
   WeeklyPlanResponse,
 } from '@/types/plan'
@@ -87,4 +89,20 @@ export async function patchMeal(
     method: 'PATCH',
     body: JSON.stringify(data),
   }, token)
+}
+
+export async function getTrainingSkillTree(
+  token: string,
+  startDate: string,
+  availableEquipment: TrainingEquipment[] = ['none']
+): Promise<TrainingSkillTreeResponse> {
+  const params = new URLSearchParams({ start_date: startDate })
+  for (const equipment of availableEquipment) {
+    params.append('available_equipment', equipment)
+  }
+  return apiClient<TrainingSkillTreeResponse>(
+    `/plans/training-skill-tree?${params.toString()}`,
+    {},
+    token
+  )
 }

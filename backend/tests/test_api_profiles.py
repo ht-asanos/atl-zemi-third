@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from app.config import settings
 from app.dependencies.auth import get_current_user_id
 from app.dependencies.supabase_client import get_authenticated_supabase
 from app.main import app
@@ -125,6 +126,22 @@ class TestGetMyProfile:
             mock_repo.get_profile = AsyncMock(return_value=None)
             resp = test_client.get("/profiles/me")
         assert resp.status_code == 404
+
+
+class TestGetMyAdminStatus:
+    def test_returns_true_for_admin(self, client) -> None:
+        test_client, _ = client
+        with patch.object(settings, "admin_user_ids", str(TEST_USER_ID)):
+            resp = test_client.get("/profiles/me/admin-status")
+        assert resp.status_code == 200
+        assert resp.json() == {"is_admin": True}
+
+    def test_returns_false_for_non_admin(self, client) -> None:
+        test_client, _ = client
+        with patch.object(settings, "admin_user_ids", str(uuid4())):
+            resp = test_client.get("/profiles/me/admin-status")
+        assert resp.status_code == 200
+        assert resp.json() == {"is_admin": False}
 
 
 class TestUpdateMyProfile:

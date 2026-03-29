@@ -1,8 +1,15 @@
 import type {
   MextFoodSearchResponse,
+  AdminTrainingProgressionGraphResponse,
   ReviewListResponse,
   ReviewUpdateRequest,
+  TrainingProgressionApplyPresetsResponse,
+  TrainingProgressionIngestResponse,
+  TrainingProgressionReviewActionRequest,
+  TrainingProgressionReviewListResponse,
+  TrainingProgressionSourceListResponse,
 } from '@/types/admin'
+import type { Exercise } from '@/types/plan'
 import { apiClient } from './client'
 
 export async function getReviewIngredients(
@@ -163,6 +170,95 @@ export async function batchAdaptYoutubeRecipes(
       method: 'POST',
       body: JSON.stringify(body),
     },
+    token
+  )
+}
+
+export async function listTrainingProgressionSources(
+  token: string,
+  limit: number = 50
+): Promise<TrainingProgressionSourceListResponse> {
+  return apiClient<TrainingProgressionSourceListResponse>(
+    `/admin/training-progressions/sources?limit=${limit}`,
+    {},
+    token
+  )
+}
+
+export async function ingestTrainingProgressions(
+  token: string,
+  body: {
+    channel_handle: string
+    title_keyword: string
+    max_results: number
+  }
+): Promise<TrainingProgressionIngestResponse> {
+  return apiClient<TrainingProgressionIngestResponse>(
+    '/admin/training-progressions/ingest',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+    token
+  )
+}
+
+export async function listTrainingProgressionReview(
+  token: string,
+  status: string = 'pending',
+  limit: number = 100
+): Promise<TrainingProgressionReviewListResponse> {
+  return apiClient<TrainingProgressionReviewListResponse>(
+    `/admin/training-progressions/review?status=${encodeURIComponent(status)}&limit=${limit}`,
+    {},
+    token
+  )
+}
+
+export async function reviewTrainingProgression(
+  token: string,
+  edgeId: string,
+  body: TrainingProgressionReviewActionRequest
+): Promise<{ status: string }> {
+  return apiClient<{ status: string }>(
+    `/admin/training-progressions/review/${edgeId}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+    token
+  )
+}
+
+export async function applyTrainingProgressionPresets(
+  token: string
+): Promise<TrainingProgressionApplyPresetsResponse> {
+  return apiClient<TrainingProgressionApplyPresetsResponse>(
+    '/admin/training-progressions/apply-presets',
+    { method: 'POST' },
+    token
+  )
+}
+
+export async function listTrainingProgressionCatalog(
+  token: string
+): Promise<Exercise[]> {
+  return apiClient<Exercise[]>(
+    '/admin/training-progressions/catalog',
+    {},
+    token
+  )
+}
+
+export async function getTrainingProgressionGraph(
+  token: string,
+  status: string = 'approved',
+  goalType: string = 'all',
+  limit: number = 200
+): Promise<AdminTrainingProgressionGraphResponse> {
+  return apiClient<AdminTrainingProgressionGraphResponse>(
+    `/admin/training-progressions/graph?status=${encodeURIComponent(status)}&goal_type=${encodeURIComponent(goalType)}&limit=${limit}`,
+    {},
     token
   )
 }

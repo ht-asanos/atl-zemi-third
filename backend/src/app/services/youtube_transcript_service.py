@@ -16,18 +16,23 @@ logger = logging.getLogger(__name__)
 
 TRANSCRIPT_MODEL = "gemini-2.5-flash"
 TRANSCRIPT_TIMEOUT = 45
+LOW_QUALITY_TRANSCRIPT_SCORE = 70.0
 
 PUNCTUATIONS = "。、，．,.!?！？"
 
 NATURALIZE_PROMPT = """\
-あなたは日本語字幕の校正者です。以下の字幕テキストを自然な日本語に整えてください。
+あなたはトレーニング動画字幕の校正者です。以下の字幕テキストを、意味を変えずに自然な日本語へ整えてください。
 
 制約:
 - 意味を変えない
 - 事実を追加しない
+- トレーニング名・種目名・姿勢名・部位名は勝手に一般語へ言い換えない
+- 回数・左右・秒数・重量・順序は絶対に変えない
+- 「できるなら」「次は」「挑戦できます」「左右3回」など進度関係の表現を保持する
 - 口語は維持してよい
 - 句読点と改行を適切に補う
 - 明らかな誤字のみ最小限修正
+- 不明な語は無理に補完せず、そのまま残す
 - 出力は整形後テキストのみ（説明不要）
 
 字幕:
@@ -96,6 +101,28 @@ def assess_transcript_quality(entries: list[dict[str, Any]]) -> dict[str, Any]:
         "quality_score": round(score, 1),
         "notes": notes,
     }
+
+
+def get_transcript_naturalization_reason(
+    transcript: dict[str, Any],
+    *,
+    quality_threshold: float = LOW_QUALITY_TRANSCRIPT_SCORE,
+) -> str | None:
+    """自然化を適用すべき理由を返す。不要なら None。"""
+    text = str(transcript.get("text", "") or "").strip()
+    if not text:
+        return None
+    if bool(transcript.get("is_generated")):
+        return "auto_generated"
+
+    quality = transcript.get("quality") or {}
+    try:
+        quality_score = float(quality.get("quality_score"))
+    except (TypeError, ValueError):
+        quality_score = None
+    if quality_score is not None and quality_score < quality_threshold:
+        return "low_quality"
+    return None
 
 
 def _normalize_transcript_entries(fetched: Any) -> list[dict[str, Any]]:

@@ -41,6 +41,12 @@ export interface WorkoutLogResponse {
 export interface CreateFeedbackRequest {
   plan_id: string
   source_text: string
+  domain?: 'meal' | 'workout' | 'mixed'
+  meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack'
+  exercise_id?: string
+  satisfaction?: number | null
+  rpe?: number | null
+  completed?: boolean | null
 }
 
 export interface FeedbackTagResponse {
@@ -50,7 +56,48 @@ export interface FeedbackTagResponse {
   created_at: string
 }
 
+export interface FeedbackEventTagResponse {
+  id: string
+  event_id: string
+  tag: string
+  tag_source: 'llm' | 'rule'
+  created_at: string
+}
+
+export interface AdaptationEventResponse {
+  id: string
+  feedback_event_id: string
+  plan_revision_id: string | null
+  domain: 'meal' | 'workout'
+  target_type: 'meal_plan' | 'recipe_selection' | 'workout_plan'
+  target_ref: string | null
+  before_snapshot: unknown
+  after_snapshot: unknown
+  change_summary_json: string[]
+  created_at: string
+}
+
+export interface FeedbackEventResponse {
+  id: string
+  plan_id: string | null
+  domain: 'meal' | 'workout' | 'mixed'
+  meal_type?: 'breakfast' | 'lunch' | 'dinner' | 'snack' | null
+  exercise_id?: string | null
+  source_text: string
+  satisfaction?: number | null
+  rpe?: number | null
+  completed?: boolean | null
+  created_at: string
+}
+
+export interface FeedbackEventDetailResponse extends FeedbackEventResponse {
+  tags: FeedbackEventTagResponse[]
+  adaptation_events: AdaptationEventResponse[]
+}
+
 export interface AdaptationResponse {
+  feedback_event_id?: string | null
+  adaptation_event_ids?: string[]
   tags_applied: string[]
   changes_summary: string[]
   extraction_status: 'success' | 'partial' | 'failed'

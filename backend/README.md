@@ -232,6 +232,45 @@ curl -sS 'http://localhost:8000/admin/youtube/recipes?page=1&per_page=20' \
 
 管理画面の `/admin/youtube` も同じ API を使っており、単一 URL 登録と一括アレンジの両方に対応しています。詳細な運用手順は [doc/youtube_recipe_ops.md](../doc/youtube_recipe_ops.md) を参照してください。
 
+## Training Progression 運用
+
+トレーニング progression graph の取り込みと review は YouTube レシピ導線とは別です。
+対象は `@CalisthenicsTokyo` の Shorts のような、段階的な負荷関係を説明する動画です。
+
+追加された主要 API / CLI:
+
+```bash
+# Shorts から progression 関係を収集
+PYTHONUNBUFFERED=1 PYTHONPATH=src uv run python -m app.services.data_loader \
+  ingest-training-progressions @CalisthenicsTokyo ができるなら 25
+
+# review 一覧
+curl -sS 'http://localhost:8000/admin/training-progressions/review?status=pending&limit=100' \
+  -H "Authorization: Bearer ${ADMIN_TOKEN}"
+
+# 1件承認
+curl -sS -X POST 'http://localhost:8000/admin/training-progressions/review/<edge_id>' \
+  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "review_status":"approved",
+        "from_exercise_id":"pull_up",
+        "from_reps":10,
+        "to_exercise_id":"chin_up",
+        "to_reps":5,
+        "goal_scope":["bouldering","strength"],
+        "review_note":"verified from short"
+      }'
+```
+
+運用メモ:
+
+- ingest で planner に使われるのは `approved` edge のみです。
+- `no_transcript` は失敗ではなく skip 扱いです。再試行対象にしなくてよいです。
+- alias が未登録の種目名は `pending` review に残るため、承認時に `from_exercise_id` / `to_exercise_id` を補ってください。
+- `POST /plans/weekly` は approved edge があれば `plan_meta.training_recommendations` に置換理由を入れます。
+- `diet` goal は progression graph を使いません。対象は `bouldering` と `strength` のみです。
+
 ## YouTube 運用上の制約
 
 - 字幕がない動画は `no_transcript` で終了します。

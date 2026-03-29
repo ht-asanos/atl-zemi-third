@@ -7,6 +7,8 @@ import { getStapleFoods } from '@/lib/api/foods'
 import { createWeeklyPlan, getWeeklyPlans } from '@/lib/api/plans'
 import { StapleCard } from '@/components/staple/staple-card'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { InlineSpinner, Spinner } from '@/components/ui/spinner'
 import { StepIndicator } from '@/components/ui/step-indicator'
 import { toast } from 'sonner'
@@ -15,8 +17,16 @@ import { getErrorInfo } from '@/lib/errors'
 import { ApiError } from '@/lib/api/client'
 import { Info } from 'lucide-react'
 import type { FoodItem } from '@/types/food'
+import type { TrainingEquipment } from '@/types/plan'
 
 type PlanMode = 'recipe' | 'classic'
+
+const DEFAULT_AVAILABLE_EQUIPMENT: TrainingEquipment[] = ['none']
+const EQUIPMENT_OPTIONS: Array<{ id: Exclude<TrainingEquipment, 'none'>; label: string }> = [
+  { id: 'pull_up_bar', label: '懸垂バー' },
+  { id: 'dip_bars', label: 'ディップバー' },
+  { id: 'dumbbells', label: 'ダンベル' },
+]
 
 function StapleContent() {
   const { session } = useAuth()
@@ -31,6 +41,7 @@ function StapleContent() {
   const [mode, setMode] = useState<PlanMode>('recipe')
   const [currentMode, setCurrentMode] = useState<PlanMode | null>(null)
   const [currentStaple, setCurrentStaple] = useState<string | null>(null)
+  const [availableEquipment, setAvailableEquipment] = useState<TrainingEquipment[]>(DEFAULT_AVAILABLE_EQUIPMENT)
 
   useEffect(() => {
     if (!session?.access_token) return
@@ -47,13 +58,26 @@ function StapleContent() {
         const meta = weeklyRes.plans[0]?.plan_meta
         const detectedMode = meta?.mode === 'classic' ? 'classic' : 'recipe'
         const detectedStaple = meta?.staple_name ?? null
+        const detectedEquipment =
+          meta?.available_equipment && meta.available_equipment.length
+            ? meta.available_equipment
+            : DEFAULT_AVAILABLE_EQUIPMENT
         setCurrentMode(detectedMode)
         setCurrentStaple(detectedStaple)
         setMode(detectedMode)
         setSelected(detectedStaple)
+        setAvailableEquipment(detectedEquipment)
       })
       .catch(() => setError('主食一覧の取得に失敗しました'))
   }, [session?.access_token])
+
+  const toggleEquipment = (equipment: Exclude<TrainingEquipment, 'none'>, checked: boolean) => {
+    setAvailableEquipment((prev) => {
+      const base = prev.filter((item) => item !== 'none')
+      const next = checked ? [...base, equipment] : base.filter((item) => item !== equipment)
+      return (next.length ? next : ['none']) as TrainingEquipment[]
+    })
+  }
 
   const handleGenerate = async () => {
     if (!session?.access_token) return
@@ -66,6 +90,7 @@ function StapleContent() {
         start_date: getNextMondayUTC(),
         mode,
         staple_name: selected || undefined,
+        available_equipment: availableEquipment,
       })
       router.push('/plans')
     } catch (err) {
@@ -161,6 +186,26 @@ function StapleContent() {
           </div>
         </>
       )}
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="text-lg">使える器具</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            未選択なら自重のみとしてトレーニングを生成します。
+          </p>
+          {EQUIPMENT_OPTIONS.map((option) => (
+            <label key={option.id} className="flex items-center gap-3 text-sm">
+              <Checkbox
+                checked={availableEquipment.includes(option.id)}
+                onCheckedChange={(checked) => toggleEquipment(option.id, checked)}
+              />
+              {option.label}
+            </label>
+          ))}
+        </CardContent>
+      </Card>
 
       <Button
         size="lg"

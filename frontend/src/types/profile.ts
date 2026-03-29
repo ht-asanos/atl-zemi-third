@@ -23,3 +23,7 @@ export interface UpdateProfileResponse {
   profile: ProfileResponse
   goal_recalculation_needed: boolean
 }
+
+export interface AdminStatusResponse {
+  is_admin: boolean
+}

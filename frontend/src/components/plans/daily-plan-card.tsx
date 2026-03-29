@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
 import { DAY_NAMES } from '@/lib/constants'
 import { getTodayLocal } from '@/lib/date-utils'
+import { buildTrainingSkillTreeHref } from '@/lib/training-skill-tree'
 import { MealSection } from './meal-section'
 import { WorkoutSection } from './workout-section'
 import { DailyNutritionSummary } from './daily-nutrition-summary'
@@ -24,6 +25,10 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
   const d = new Date(plan.plan_date + 'T00:00:00')
   const dayLabel = `${d.getMonth() + 1}/${d.getDate()} (${DAY_NAMES[d.getDay()]})`
   const isToday = plan.plan_date === getTodayLocal()
+  const skillTreeHref = buildTrainingSkillTreeHref(
+    plan.plan_date,
+    plan.plan_meta?.available_equipment
+  )
 
   // recipe モード判定: meal_plan 内に meal_type があれば recipe モード
   const isRecipeMode = plan.meal_plan.some((m) => m.meal_type != null)
@@ -77,7 +82,11 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
 
       <div>
         <h4 className="mb-2 text-lg font-semibold">トレーニング</h4>
-        <WorkoutSection workout={plan.workout_plan} />
+        <WorkoutSection
+          workout={plan.workout_plan}
+          recommendations={plan.plan_meta?.training_recommendations}
+          skillTreeHref={skillTreeHref}
+        />
       </div>
     </div>
   )

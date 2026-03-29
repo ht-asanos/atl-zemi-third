@@ -127,6 +127,46 @@ class TestGenerateWeeklyPlan:
         assert plans[5].training_day is None
         assert plans[6].training_day is not None
 
+    def test_exercise_recommendations_replace_matching_exercise(self) -> None:
+        plans = generate_weekly_plan(
+            start_date=date(2026, 3, 9),
+            pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
+            staple=_get_staple(),
+            goal_type="strength",
+            protein_foods=_get_proteins(),
+            bulk_foods=_get_bulks(),
+            exercise_recommendations={
+                "pull_up": {
+                    "id": "chin_up",
+                    "name_ja": "チンアップ",
+                    "muscle_group": "back",
+                    "sets": 3,
+                    "reps": 5,
+                    "rest_seconds": 90,
+                }
+            },
+        )
+        pull_day = plans[1].training_day
+        assert pull_day is not None
+        assert any(ex.id == "chin_up" for ex in pull_day.exercises)
+
+    def test_available_equipment_filters_unavailable_exercises(self) -> None:
+        plans = generate_weekly_plan(
+            start_date=date(2026, 3, 9),
+            pfc_budget=PFCBudget(protein_g=140, fat_g=56, carbs_g=270),
+            staple=_get_staple(),
+            goal_type="bouldering",
+            protein_foods=_get_proteins(),
+            bulk_foods=_get_bulks(),
+            available_equipment=["none"],
+        )
+        for plan in plans:
+            if plan.training_day is None:
+                continue
+            for ex in plan.training_day.exercises:
+                assert "pull_up_bar" not in ex.required_equipment
+                assert "dumbbells" not in ex.required_equipment
+
 
 class TestGenerateWeeklyPlanV3:
     def _make_mock_recipes(self, count: int = 7) -> list[Recipe]:

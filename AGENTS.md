@@ -131,6 +131,7 @@ repos:
 ## Git Rules
 - **Task Start** 新しいタスクを開始する際は、必ずブランチを切ってから行うこと。
 - **Task End** タスク終了時は実画面でのテストを行い、完了したことを確かめたあとgitへcommit&push、そしてmainへのpull requestをすること。
+- **Logs** タスク終了後は、`@docs/[変更点].md`を必ず書くこと。また、`@docs/roadmap.md`を参照し適宜ステータスを更新すること。
 
 ## 📝 PR & Commit Rules
 - **PR Title:** `[<component/module>] <Description>`

@@ -186,32 +186,47 @@ async def fetch_channel_videos_by_query(
     channel_id: str,
     query: str,
     max_results: int = 25,
+    include_shorts: bool = False,
 ) -> list[dict]:
-    """search.list(channelId + q) で動画候補を取得する。"""
-    for attempt in range(MAX_RETRIES_YT_API + 1):
-        try:
-            resp = await http_client.get(
-                f"{YT_API_BASE}/search",
-                params={
+    """search.list(channelId + q) で動画候補を取得する。必要に応じてページングする。"""
+    if max_results <= 0:
+        return []
+
+    out: list[dict] = []
+    seen_video_ids: set[str] = set()
+    next_page_token: str | None = None
+
+    while len(out) < max_results:
+        for attempt in range(MAX_RETRIES_YT_API + 1):
+            try:
+                params = {
                     "part": "snippet",
                     "channelId": channel_id,
                     "type": "video",
                     "order": "date",
                     "q": query,
-                    "maxResults": max_results,
+                    "maxResults": min(50, max_results),
                     "key": api_key,
-                },
-            )
-            if resp.status_code == 403:
-                logger.warning("YouTube API quota exceeded during query video fetch")
-                raise QuotaExceededError()
-            resp.raise_for_status()
-            data = resp.json()
-            out: list[dict] = []
-            for item in data.get("items", []):
-                vid = item.get("id", {}).get("videoId")
-                snippet = item.get("snippet", {})
-                if vid and not _is_probable_shorts(item):
+                }
+                if next_page_token:
+                    params["pageToken"] = next_page_token
+                resp = await http_client.get(
+                    f"{YT_API_BASE}/search",
+                    params=params,
+                )
+                if resp.status_code == 403:
+                    logger.warning("YouTube API quota exceeded during query video fetch")
+                    raise QuotaExceededError()
+                resp.raise_for_status()
+                data = resp.json()
+                for item in data.get("items", []):
+                    vid = item.get("id", {}).get("videoId")
+                    snippet = item.get("snippet", {})
+                    if not vid or vid in seen_video_ids:
+                        continue
+                    if not include_shorts and _is_probable_shorts(item):
+                        continue
+                    seen_video_ids.add(vid)
                     out.append(
                         {
                             "video_id": vid,
@@ -219,13 +234,19 @@ async def fetch_channel_videos_by_query(
                             "published_at": snippet.get("publishedAt", ""),
                         }
                     )
-            return out
-        except QuotaExceededError:
-            raise
-        except httpx.HTTPError:
-            if attempt < MAX_RETRIES_YT_API:
-                await asyncio.sleep(YT_API_RETRY_WAIT)
-            else:
-                logger.exception("Failed to fetch queried videos for channel %s", channel_id)
-                return []
-    return []
+                    if len(out) >= max_results:
+                        break
+                next_page_token = data.get("nextPageToken")
+                break
+            except QuotaExceededError:
+                raise
+            except httpx.HTTPError:
+                if attempt < MAX_RETRIES_YT_API:
+                    await asyncio.sleep(YT_API_RETRY_WAIT)
+                else:
+                    logger.exception("Failed to fetch queried videos for channel %s", channel_id)
+                    return out
+        if not next_page_token:
+            break
+
+    return out[:max_results]

@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from app.dependencies.auth import get_current_user_id
+from app.dependencies.auth import get_current_user_id, is_admin_user_id
 from app.dependencies.supabase_client import get_authenticated_supabase
 from app.exceptions import AppException, ErrorCode
 from app.repositories import profile_repo
@@ -33,6 +33,13 @@ async def get_my_profile(
     if profile is None:
         raise AppException(ErrorCode.VALIDATION_ERROR, 404, "Profile not found")
     return profile
+
+
+@router.get("/me/admin-status")
+async def get_my_admin_status(
+    user_id: UUID = Depends(get_current_user_id),
+) -> dict[str, bool]:
+    return {"is_admin": is_admin_user_id(user_id)}
 
 
 @router.put("/me", response_model=UpdateProfileResponse)

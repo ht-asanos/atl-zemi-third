@@ -32,6 +32,7 @@ export interface WeeklyPlanRequest {
   staple_name?: string
   mode?: 'classic' | 'recipe'
   recipe_filters?: RecipeFilters
+  available_equipment?: TrainingEquipment[]
 }
 
 export interface PatchMealRequest {
@@ -53,6 +54,8 @@ export interface PlanMeta {
   mode: string | null
   staple_name: string | null
   recipe_filters?: RecipeFilters | null
+  available_equipment?: TrainingEquipment[] | null
+  training_recommendations?: TrainingRecommendation[] | null
   validation?: Record<string, unknown> | null
   validation_issues?: string[] | null
   duplicate_count?: number | null
@@ -127,4 +130,62 @@ export interface Exercise {
   sets: number
   reps: number | string
   rest_seconds: number
+  required_equipment?: TrainingEquipment[]
+}
+
+export type TrainingEquipment = 'none' | 'pull_up_bar' | 'dip_bars' | 'dumbbells'
+
+export interface TrainingRecommendation {
+  from_exercise_id: string
+  to_exercise_id: string
+  reason: string
+}
+
+export interface TrainingSkillTreeNode {
+  exercise_id: string
+  name_ja: string
+  required_equipment: TrainingEquipment[] | string[]
+  best_completed_reps: number
+  status: 'locked' | 'unlocked' | 'current' | 'recommended' | 'mastered' | 'blocked'
+  next_threshold_reps?: number | null
+  recommendation_reason?: string | null
+  latest_log_summary?: {
+    log_date: string
+    sets: number
+    reps: number
+    rpe?: number | null
+    completed: boolean
+  } | null
+  latest_feedback_summary?: {
+    created_at: string
+    source_text: string
+    tags: string[]
+  } | null
+}
+
+export interface TrainingSkillTreeEdge {
+  from_exercise_id: string
+  to_exercise_id: string
+  from_reps_required: number
+  to_reps_target: number
+  is_recommended_path: boolean
+}
+
+export interface TrainingSkillTreeTrack {
+  track_id: string
+  title: string
+  nodes: TrainingSkillTreeNode[]
+  edges: TrainingSkillTreeEdge[]
+}
+
+export interface TrainingSkillTreeSummary {
+  goal_type: string
+  available_edge_count: number
+  recommended_count: number
+  has_negative_feedback: boolean
+}
+
+export interface TrainingSkillTreeResponse {
+  summary: TrainingSkillTreeSummary
+  tracks: TrainingSkillTreeTrack[]
 }

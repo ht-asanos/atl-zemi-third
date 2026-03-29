@@ -151,11 +151,15 @@ class TestE2EFeedbackLoop:
         with (
             patch("app.routers.feedback.plan_repo") as mock_plan,
             patch("app.routers.feedback.tag_extractor") as mock_extractor,
+            patch("app.routers.feedback.feedback_event_repo") as mock_event_repo,
             patch("app.routers.feedback.feedback_repo") as mock_fb,
             patch("app.routers.feedback.food_repo") as mock_food,
         ):
             mock_plan.get_daily_plan_row_by_user = AsyncMock(return_value=PLAN_ROW)
             mock_extractor.extract_tags = AsyncMock(return_value=ExtractionResult(tags=["too_hard"], status="success"))
+            mock_event_repo.create_feedback_event = AsyncMock(return_value=uuid4())
+            mock_event_repo.create_feedback_event_tags = AsyncMock(return_value=[uuid4()])
+            mock_event_repo.create_adaptation_events = AsyncMock(return_value=[uuid4()])
             mock_fb.create_feedback_tags = AsyncMock(return_value=[])
             mock_plan.update_daily_plan = AsyncMock(return_value=None)
             mock_fb.create_plan_revision = AsyncMock(return_value=uuid4())

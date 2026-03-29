@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import type { RecipeFilters } from '@/types/plan'
+import type { RecipeFilters, TrainingEquipment } from '@/types/plan'
+
+const EQUIPMENT_OPTIONS: Array<{ id: Exclude<TrainingEquipment, 'none'>; label: string }> = [
+  { id: 'pull_up_bar', label: '懸垂バー' },
+  { id: 'dip_bars', label: 'ディップバー' },
+  { id: 'dumbbells', label: 'ダンベル' },
+]
 
 interface RecipeRegenerateDialogProps {
   open: boolean
@@ -12,8 +18,9 @@ interface RecipeRegenerateDialogProps {
   description: string
   mode: 'weekly' | 'single'
   initialFilters: RecipeFilters
+  initialEquipment?: TrainingEquipment[]
   submitting?: boolean
-  onConfirm: (filters: RecipeFilters) => void
+  onConfirm: (filters: RecipeFilters, availableEquipment?: TrainingEquipment[]) => void
   onCancel: () => void
 }
 
@@ -23,17 +30,20 @@ export function RecipeRegenerateDialog({
   description,
   mode,
   initialFilters,
+  initialEquipment = ['none'],
   submitting = false,
   onConfirm,
   onCancel,
 }: RecipeRegenerateDialogProps) {
   const [filters, setFilters] = useState<RecipeFilters>(initialFilters)
+  const [availableEquipment, setAvailableEquipment] = useState<TrainingEquipment[]>(initialEquipment)
 
   useEffect(() => {
     if (open) {
       setFilters(initialFilters)
+      setAvailableEquipment(initialEquipment)
     }
-  }, [open, initialFilters])
+  }, [open, initialFilters, initialEquipment])
 
   const sourceError = useMemo(() => filters.allowed_sources.length === 0, [filters.allowed_sources])
 
@@ -53,6 +63,14 @@ export function RecipeRegenerateDialog({
 
   const toggleOption = (key: 'prefer_favorites' | 'exclude_disliked' | 'prefer_variety', checked: boolean) => {
     setFilters((prev) => ({ ...prev, [key]: checked }))
+  }
+
+  const toggleEquipment = (equipment: Exclude<TrainingEquipment, 'none'>, checked: boolean) => {
+    setAvailableEquipment((prev) => {
+      const base = prev.filter((item) => item !== 'none')
+      const next = checked ? [...base, equipment] : base.filter((item) => item !== equipment)
+      return (next.length ? next : ['none']) as TrainingEquipment[]
+    })
   }
 
   return (
@@ -111,6 +129,24 @@ export function RecipeRegenerateDialog({
             </label>
           </div>
 
+          {mode === 'weekly' && (
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">使える器具</p>
+                <p className="text-xs text-muted-foreground">未選択なら自重のみとして生成します</p>
+              </div>
+              {EQUIPMENT_OPTIONS.map((option) => (
+                <label key={option.id} className="flex items-center gap-3 text-sm">
+                  <Checkbox
+                    checked={availableEquipment.includes(option.id)}
+                    onCheckedChange={(checked) => toggleEquipment(option.id, checked)}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          )}
+
           <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
             {mode === 'weekly'
               ? '今週ですでに使ったレシピは自動で避けます。'
@@ -120,7 +156,7 @@ export function RecipeRegenerateDialog({
           <div className="flex gap-2">
             <Button
               className="flex-1"
-              onClick={() => onConfirm(filters)}
+              onClick={() => onConfirm(filters, availableEquipment)}
               disabled={submitting || sourceError}
             >
               {submitting ? '処理中...' : '実行する'}

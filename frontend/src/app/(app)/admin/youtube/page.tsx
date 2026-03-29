@@ -205,9 +205,14 @@ export default function AdminYoutubePage() {
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold">YouTube レシピ管理</h1>
-        <Link href="/admin/review" className="text-sm text-blue-600 hover:underline">
-          食材レビューへ
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/admin/training-progressions" className="text-sm text-blue-600 hover:underline">
+            Training Progressionsへ
+          </Link>
+          <Link href="/admin/review" className="text-sm text-blue-600 hover:underline">
+            食材レビューへ
+          </Link>
+        </div>
       </div>
 
       {error && (

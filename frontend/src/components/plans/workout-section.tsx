@@ -1,12 +1,15 @@
 'use client'
 
-import type { TrainingDay } from '@/types/plan'
+import Link from 'next/link'
+import type { TrainingDay, TrainingRecommendation } from '@/types/plan'
 
 interface WorkoutSectionProps {
   workout: TrainingDay | Record<string, never>
+  recommendations?: TrainingRecommendation[] | null
+  skillTreeHref?: string | null
 }
 
-export function WorkoutSection({ workout }: WorkoutSectionProps) {
+export function WorkoutSection({ workout, recommendations, skillTreeHref }: WorkoutSectionProps) {
   if (!('day_label' in workout) || !workout.exercises?.length) {
     return (
       <div className="rounded-md border p-3">
@@ -17,7 +20,24 @@ export function WorkoutSection({ workout }: WorkoutSectionProps) {
 
   return (
     <div className="space-y-2">
-      <h4 className="font-semibold">{workout.day_label}</h4>
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="font-semibold">{workout.day_label}</h4>
+        {skillTreeHref ? (
+          <Link href={skillTreeHref} className="text-sm text-primary underline">
+            スキルツリーを見る
+          </Link>
+        ) : null}
+      </div>
+      {recommendations && recommendations.length > 0 && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+          <p className="mb-2 font-medium">今回のトレーニング調整</p>
+          <ul className="space-y-1">
+            {recommendations.map((rec) => (
+              <li key={`${rec.from_exercise_id}-${rec.to_exercise_id}`}>{rec.reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="rounded-md border p-3">
         <table className="w-full text-sm">
           <thead>

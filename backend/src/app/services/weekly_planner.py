@@ -12,7 +12,7 @@ from uuid import UUID
 from app.models.food import FoodItem, MealSuggestion, MealType, NutritionStatus
 from app.models.nutrition import PFCBudget
 from app.models.recipe import Recipe
-from app.models.training import MuscleGroup, TrainingDay
+from app.models.training import Exercise, MuscleGroup, TrainingDay
 from app.repositories import recipe_repo
 from app.services.meal_suggestion import (
     _make_breakfast,
@@ -23,6 +23,11 @@ from app.services.meal_suggestion import (
     generate_structured_daily_meals,
 )
 from app.services.plan_validator import ValidationResult, validate_weekly_plan
+from app.services.training_catalog import (
+    is_exercise_available,
+    normalize_available_equipment,
+    resolve_available_exercise,
+)
 from app.services.training_template import get_template
 
 from supabase import AsyncClient
@@ -46,10 +51,14 @@ def _apply_training_adjustments(
     training_day: TrainingDay,
     scale: float,
     protect_forearms: bool,
+    exercise_recommendations: dict[str, dict] | None = None,
+    available_equipment: list[str] | set[str] | None = None,
 ) -> TrainingDay:
+    equipment = normalize_available_equipment(available_equipment)
     exercises = []
     for ex in training_day.exercises:
-        ex_copy = ex.model_copy(deep=True)
+        rec = (exercise_recommendations or {}).get(ex.id)
+        ex_copy = Exercise(**rec).model_copy(deep=True) if rec else ex.model_copy(deep=True)
         if protect_forearms and ex_copy.muscle_group.value == "forearms":
             ex_copy.id = "scapular_pull_up"
             ex_copy.name_ja = "スキャプラプルアップ"
@@ -57,6 +66,13 @@ def _apply_training_adjustments(
             ex_copy.sets = 3
             ex_copy.reps = 10
             ex_copy.rest_seconds = 75
+            ex_copy.required_equipment = ["pull_up_bar"]
+
+        if not is_exercise_available(ex_copy, equipment):
+            resolved = resolve_available_exercise(ex_copy.id, equipment)
+            if resolved is None:
+                continue
+            ex_copy = resolved
 
         if isinstance(ex_copy.reps, int):
             ex_copy.reps = max(1, ceil(ex_copy.reps * scale))
@@ -74,6 +90,8 @@ def generate_weekly_plan(
     bulk_foods: list[FoodItem] | None = None,
     training_scale: float = 1.0,
     protect_forearms: bool = False,
+    exercise_recommendations: dict[str, dict] | None = None,
+    available_equipment: list[str] | set[str] | None = None,
 ) -> list[DailyPlanData]:
     """7日分のプランを生成する。
 
@@ -91,9 +109,21 @@ def generate_weekly_plan(
             if idx is None:
                 training_day = None
             else:
-                training_day = _apply_training_adjustments(training_days[idx], training_scale, protect_forearms)
+                training_day = _apply_training_adjustments(
+                    training_days[idx],
+                    training_scale,
+                    protect_forearms,
+                    exercise_recommendations=exercise_recommendations,
+                    available_equipment=available_equipment,
+                )
         else:
-            training_day = training_days[day_offset % len(training_days)]
+            training_day = _apply_training_adjustments(
+                training_days[day_offset % len(training_days)],
+                training_scale,
+                protect_forearms,
+                exercise_recommendations=exercise_recommendations,
+                available_equipment=available_equipment,
+            )
         meals = generate_daily_meals(
             pfc_budget,
             staple,
@@ -121,6 +151,8 @@ async def generate_weekly_plan_v2(
     bulk_foods: list[FoodItem] | None = None,
     training_scale: float = 1.0,
     protect_forearms: bool = False,
+    exercise_recommendations: dict[str, dict] | None = None,
+    available_equipment: list[str] | set[str] | None = None,
 ) -> list[DailyPlanData]:
     """7日分のプランを生成する（レシピ提案対応版）。"""
     template = get_template(goal_type)
@@ -135,9 +167,21 @@ async def generate_weekly_plan_v2(
             if idx is None:
                 training_day = None
             else:
-                training_day = _apply_training_adjustments(training_days[idx], training_scale, protect_forearms)
+                training_day = _apply_training_adjustments(
+                    training_days[idx],
+                    training_scale,
+                    protect_forearms,
+                    exercise_recommendations=exercise_recommendations,
+                    available_equipment=available_equipment,
+                )
         else:
-            training_day = training_days[day_offset % len(training_days)]
+            training_day = _apply_training_adjustments(
+                training_days[day_offset % len(training_days)],
+                training_scale,
+                protect_forearms,
+                exercise_recommendations=exercise_recommendations,
+                available_equipment=available_equipment,
+            )
         meals = await generate_daily_meals_v2(
             pfc_budget,
             staple,
@@ -201,7 +245,9 @@ async def generate_weekly_plan_v3(
     prefer_variety: bool = True,
     training_scale: float = 1.0,
     protect_forearms: bool = False,
+    exercise_recommendations: dict[str, dict] | None = None,
     exclude_recipe_ids: list[UUID] | None = None,
+    available_equipment: list[str] | set[str] | None = None,
 ) -> tuple[list[DailyPlanData], dict]:
     """朝食固定 + 昼食固定 + 夕食レシピ（7日重複なし、PFC フィルタ付き）。
 
@@ -257,9 +303,21 @@ async def generate_weekly_plan_v3(
             if idx is None:
                 training_day = None
             else:
-                training_day = _apply_training_adjustments(training_days[idx], training_scale, protect_forearms)
+                training_day = _apply_training_adjustments(
+                    training_days[idx],
+                    training_scale,
+                    protect_forearms,
+                    exercise_recommendations=exercise_recommendations,
+                    available_equipment=available_equipment,
+                )
         else:
-            training_day = training_days[day_offset % len(training_days)]
+            training_day = _apply_training_adjustments(
+                training_days[day_offset % len(training_days)],
+                training_scale,
+                protect_forearms,
+                exercise_recommendations=exercise_recommendations,
+                available_equipment=available_equipment,
+            )
         result.append(
             DailyPlanData(
                 plan_date=start_date + timedelta(days=day_offset),
@@ -290,8 +348,10 @@ async def generate_weekly_plan_v3_validated(
     prefer_variety: bool = True,
     training_scale: float = 1.0,
     protect_forearms: bool = False,
+    exercise_recommendations: dict[str, dict] | None = None,
     exclude_recipe_ids: list[UUID] | None = None,
     fixed_exclude_recipe_ids: list[UUID] | None = None,
+    available_equipment: list[str] | set[str] | None = None,
 ) -> tuple[list[DailyPlanData], ValidationResult]:
     """品質ゲート付き生成。NG時は問題レシピを除外してリトライする。
 
@@ -326,7 +386,9 @@ async def generate_weekly_plan_v3_validated(
             prefer_variety=prefer_variety,
             training_scale=training_scale,
             protect_forearms=protect_forearms,
+            exercise_recommendations=exercise_recommendations,
             exclude_recipe_ids=all_exclude if all_exclude else None,
+            available_equipment=available_equipment,
         )
         validation = validate_weekly_plan(plans)
         validation.metrics.update(selection_metrics)

@@ -107,6 +107,7 @@ class TestCreateWeeklyPlanClassic:
             "exclude_disliked": True,
             "prefer_variety": True,
         }
+        assert call_plans[0]["plan_meta"]["available_equipment"] == ["none"]
         mock_training_adj.assert_called_once()
 
     def test_goal_not_found(self, client) -> None:
@@ -236,6 +237,7 @@ class TestCreateWeeklyPlanRecipe:
         assert kwargs["prefer_favorites"] is True
         assert kwargs["exclude_disliked"] is True
         assert kwargs["prefer_variety"] is True
+        assert kwargs["available_equipment"] == ["none"]
 
     def test_recipe_mode_passes_custom_recipe_filters(self, client) -> None:
         test_client, _ = client
@@ -279,6 +281,41 @@ class TestCreateWeeklyPlanRecipe:
         assert kwargs["prefer_favorites"] is False
         assert kwargs["exclude_disliked"] is False
         assert kwargs["prefer_variety"] is False
+
+    def test_recipe_mode_passes_available_equipment(self, client) -> None:
+        test_client, _ = client
+        with (
+            patch("app.routers.plans.goal_repo") as mock_goal,
+            patch("app.routers.plans.plan_repo") as mock_plan,
+            patch("app.routers.plans.generate_weekly_plan_v3_validated") as mock_v3,
+            patch("app.routers.plans.favorite_repo") as mock_fav,
+            patch("app.routers.plans.rating_repo") as mock_rating,
+            patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
+        ):
+            mock_goal.get_latest_goal = AsyncMock(return_value=MOCK_GOAL)
+            mock_plan.upsert_weekly_plans = AsyncMock(return_value=None)
+            mock_plan.get_past_recipe_ids = AsyncMock(return_value=[])
+            mock_plan.get_weekly_plans = AsyncMock(return_value=_make_daily_plans_response())
+            mock_fav.get_favorite_recipe_ids = AsyncMock(return_value=set())
+            mock_rating.get_liked_recipe_ids = AsyncMock(return_value=set())
+            mock_rating.get_disliked_recipe_ids = AsyncMock(return_value=set())
+            mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
+
+            from app.services.plan_validator import ValidationResult
+
+            mock_v3.return_value = ([], ValidationResult())
+
+            resp = test_client.post(
+                "/plans/weekly",
+                json={
+                    "start_date": "2026-03-09",
+                    "mode": "recipe",
+                    "available_equipment": ["pull_up_bar", "dumbbells"],
+                },
+            )
+        assert resp.status_code == 201
+        _, kwargs = mock_v3.call_args
+        assert kwargs["available_equipment"] == ["dumbbells", "pull_up_bar"]
 
     def test_recipe_mode_rejects_empty_allowed_sources(self, client) -> None:
         test_client, _ = client
@@ -463,3 +500,110 @@ class TestGetWeeklyPlan:
         test_client, _ = client
         resp = test_client.get("/plans/weekly")
         assert resp.status_code == 422
+
+
+class TestGetTrainingSkillTree:
+    def test_success(self, client) -> None:
+        test_client, _ = client
+        with (
+            patch("app.routers.plans.goal_repo") as mock_goal,
+            patch("app.routers.plans.build_training_skill_tree") as mock_tree,
+        ):
+            mock_goal.get_latest_goal = AsyncMock(
+                return_value=GoalResponse(
+                    id=GOAL_ID,
+                    goal_type=Goal.STRENGTH,
+                    target_kcal=2282.5,
+                    protein_g=140.0,
+                    fat_g=56.0,
+                    carbs_g=388.1,
+                )
+            )
+            mock_tree.return_value = {
+                "summary": {
+                    "goal_type": "strength",
+                    "available_edge_count": 1,
+                    "recommended_count": 1,
+                    "has_negative_feedback": False,
+                },
+                "tracks": [
+                    {
+                        "track_id": "reverse_scapular_push_up",
+                        "title": "リバーススキャピュラープッシュアップ",
+                        "nodes": [
+                            {
+                                "exercise_id": "reverse_scapular_push_up",
+                                "name_ja": "リバーススキャピュラープッシュアップ",
+                                "required_equipment": ["none"],
+                                "best_completed_reps": 10,
+                                "status": "current",
+                                "next_threshold_reps": 10,
+                                "recommendation_reason": None,
+                            }
+                        ],
+                        "edges": [],
+                    }
+                ],
+            }
+
+            resp = test_client.get("/plans/training-skill-tree?start_date=2026-03-22&available_equipment=none")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["summary"]["goal_type"] == "strength"
+        assert data["tracks"][0]["nodes"][0]["status"] == "current"
+        mock_tree.assert_awaited_once()
+
+    def test_goal_not_found_returns_404(self, client) -> None:
+        test_client, _ = client
+        with patch("app.routers.plans.goal_repo") as mock_goal:
+            mock_goal.get_latest_goal = AsyncMock(return_value=None)
+            resp = test_client.get("/plans/training-skill-tree?start_date=2026-03-22")
+        assert resp.status_code == 404
+
+
+class TestTrainingRecommendationMeta:
+    def test_classic_mode_includes_training_recommendations_in_plan_meta(self, client) -> None:
+        test_client, _ = client
+        recommendation = type("Rec", (), {"replacement_id": "chin_up", "reason": "pull_up 10回達成"})()
+        with (
+            patch("app.routers.plans.goal_repo") as mock_goal,
+            patch("app.routers.plans.food_repo") as mock_food,
+            patch("app.routers.plans.plan_repo") as mock_plan,
+            patch("app.routers.plans.build_next_week_training_adjustment") as mock_training_adj,
+            patch(
+                "app.routers.plans.recommend_progression_replacements",
+                AsyncMock(return_value={"pull_up": recommendation}),
+            ),
+        ):
+            mock_goal.get_latest_goal = AsyncMock(
+                return_value=GoalResponse(
+                    id=GOAL_ID,
+                    goal_type=Goal.STRENGTH,
+                    target_kcal=2282.5,
+                    protein_g=140.0,
+                    fat_g=56.0,
+                    carbs_g=388.1,
+                )
+            )
+            mock_food.get_food_by_name = AsyncMock(return_value=STAPLE_FOODS[0])
+            mock_food.get_protein_foods = AsyncMock(return_value=PROTEIN_FOODS)
+            mock_food.get_bulk_foods = AsyncMock(return_value=BULK_FOODS)
+            mock_plan.upsert_weekly_plans = AsyncMock(return_value=None)
+            mock_plan.get_weekly_plans = AsyncMock(return_value=_make_daily_plans_response())
+            mock_training_adj.return_value = type("Adj", (), {"scale": 1.0, "protect_forearms": False})()
+
+            resp = test_client.post(
+                "/plans/weekly",
+                json={"start_date": "2026-03-09", "staple_name": "冷凍うどん", "mode": "classic"},
+            )
+
+        assert resp.status_code == 201
+        call_plans = mock_plan.upsert_weekly_plans.call_args[0][1]
+        assert call_plans[0]["plan_meta"]["training_recommendations"] == [
+            {
+                "from_exercise_id": "pull_up",
+                "to_exercise_id": "chin_up",
+                "reason": "pull_up 10回達成",
+            }
+        ]

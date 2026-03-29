@@ -27,9 +27,13 @@ from app.schemas.plan import (
     WeeklyPlanRequest,
     WeeklyPlanResponse,
 )
+from app.schemas.training_progression import TrainingSkillTreeResponse
 from app.services.meal_suggestion import _make_dinner_from_recipe, calc_dinner_budget, generate_daily_meals
 from app.services.shopping_list import generate_shopping_list
 from app.services.training_adaptation import build_next_week_training_adjustment
+from app.services.training_catalog import get_exercise_definition, normalize_available_equipment
+from app.services.training_progression_planner import recommend_progression_replacements
+from app.services.training_skill_tree_service import build_training_skill_tree
 from app.services.weekly_planner import generate_weekly_plan, generate_weekly_plan_v3_validated
 from fastapi import APIRouter, Depends, Query, status
 from postgrest.exceptions import APIError
@@ -99,6 +103,25 @@ async def get_weekly_plan(
     return WeeklyPlanResponse(plans=plans)
 
 
+@router.get("/training-skill-tree", response_model=TrainingSkillTreeResponse)
+async def get_training_skill_tree(
+    start_date: date = Query(...),
+    available_equipment: list[str] | None = Query(None),
+    user_id: UUID = Depends(get_current_user_id),
+    supabase: AsyncClient = Depends(get_authenticated_supabase),
+) -> TrainingSkillTreeResponse:
+    goal = await goal_repo.get_latest_goal(supabase, user_id)
+    if goal is None:
+        raise AppException(ErrorCode.GOAL_NOT_FOUND, 404, "Goal not found. Create goal first.")
+    return await build_training_skill_tree(
+        supabase,
+        user_id=user_id,
+        goal_type=goal.goal_type,
+        start_date=start_date,
+        available_equipment=available_equipment,
+    )
+
+
 @router.get("/weekly/shopping-list", response_model=ShoppingListResponse)
 async def get_shopping_list(
     start_date: date = Query(...),
@@ -145,9 +168,31 @@ async def create_weekly_plan(
         raise AppException(ErrorCode.GOAL_NOT_FOUND, 404, "Goal not found. Create goal first.")
 
     recipe_filters = _normalize_recipe_filters(body.recipe_filters)
+    available_equipment = sorted(normalize_available_equipment(body.available_equipment))
 
     pfc_budget = PFCBudget(protein_g=goal.protein_g, fat_g=goal.fat_g, carbs_g=goal.carbs_g)
     training_adj = await build_next_week_training_adjustment(supabase, user_id, body.start_date, goal.goal_type)
+    progression_replacements = await recommend_progression_replacements(
+        supabase,
+        user_id=user_id,
+        start_date=body.start_date,
+        goal_type=goal.goal_type,
+        available_equipment=available_equipment,
+    )
+    exercise_recommendations: dict[str, dict] = {}
+    training_recommendation_meta: list[dict[str, str]] = []
+    for exercise_id, rec in progression_replacements.items():
+        exercise = get_exercise_definition(rec.replacement_id)
+        if exercise is None:
+            continue
+        exercise_recommendations[exercise_id] = exercise.model_dump()
+        training_recommendation_meta.append(
+            {
+                "from_exercise_id": exercise_id,
+                "to_exercise_id": rec.replacement_id,
+                "reason": rec.reason,
+            }
+        )
 
     if body.mode == "recipe":
         fav_ids = await favorite_repo.get_favorite_recipe_ids(supabase, user_id)
@@ -180,12 +225,14 @@ async def create_weekly_plan(
             staple_short_name=staple_short_name,
             training_scale=training_adj.scale,
             protect_forearms=training_adj.protect_forearms,
+            exercise_recommendations=exercise_recommendations,
             exclude_recipe_ids=past_ids,
             fixed_exclude_recipe_ids=current_week_ids,
             allowed_sources=recipe_filters.allowed_sources,
             prefer_favorites=recipe_filters.prefer_favorites,
             exclude_disliked=recipe_filters.exclude_disliked,
             prefer_variety=recipe_filters.prefer_variety,
+            available_equipment=available_equipment,
         )
         # 主食指定時は非一致フォールバックを許容しない。
         # 一致候補ゼロなら生成を失敗として返し、ユーザーに再設定を促す。
@@ -215,12 +262,16 @@ async def create_weekly_plan(
             bulk_foods=bulk_foods,
             training_scale=training_adj.scale,
             protect_forearms=training_adj.protect_forearms,
+            exercise_recommendations=exercise_recommendations,
+            available_equipment=available_equipment,
         )
 
     plan_meta: dict = {
         "mode": body.mode,
         "staple_name": body.staple_name,
         "recipe_filters": recipe_filters.model_dump(),
+        "available_equipment": available_equipment,
+        "training_recommendations": training_recommendation_meta or None,
     }
     if body.mode == "recipe":
         plan_meta["validation"] = validation.metrics

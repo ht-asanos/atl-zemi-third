@@ -3,7 +3,18 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.exceptions import AppException, app_exception_handler
-from app.routers import admin_review, admin_youtube, feedback, foods, goals, logs, plans, profiles, recipes
+from app.routers import (
+    admin_review,
+    admin_training_progressions,
+    admin_youtube,
+    feedback,
+    foods,
+    goals,
+    logs,
+    plans,
+    profiles,
+    recipes,
+)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -41,6 +52,7 @@ app.include_router(feedback.router)
 app.include_router(recipes.router)
 app.include_router(admin_review.router)
 app.include_router(admin_youtube.router)
+app.include_router(admin_training_progressions.router)
 
 
 @app.get("/health")

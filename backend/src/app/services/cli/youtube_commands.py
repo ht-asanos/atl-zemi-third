@@ -7,6 +7,7 @@ from app.config import settings
 from app.repositories import recipe_repo
 from app.services.cli._shared import _get_service_client
 from app.services.ingredient_matcher import calculate_recipe_nutrition, match_recipe_ingredients
+from app.services.training_progression_service import ingest_training_progressions
 from app.services.youtube_recipe import fetch_youtube_recipes, fetch_youtube_recipes_by_staple_from_channels
 from app.services.youtube_transcript_service import fetch_transcript, naturalize_auto_transcript
 from postgrest.exceptions import APIError
@@ -125,3 +126,47 @@ async def cmd_check_youtube_transcript():
     print("--- Transcript (head) ---")
     print(text[:2000])
     print("--- End ---")
+
+
+async def cmd_ingest_training_progressions():
+    if len(sys.argv) < 3:
+        print(
+            "Usage: python -m app.services.data_loader ingest-training-progressions "
+            "<@channel_handle> [title_keyword] [max_results]"
+        )
+        sys.exit(1)
+
+    channel_handle = sys.argv[2].strip()
+    title_keyword = sys.argv[3].strip() if len(sys.argv) >= 4 else "ができるなら"
+    max_results = int(sys.argv[4]) if len(sys.argv) >= 5 and sys.argv[4].isdigit() else 25
+
+    if not settings.youtube_api_key:
+        print("ERROR: YOUTUBE_API_KEY is not set")
+        sys.exit(1)
+    if not settings.google_api_key:
+        print("ERROR: GOOGLE_API_KEY is not set")
+        sys.exit(1)
+
+    supabase = await _get_service_client()
+    async with httpx.AsyncClient(timeout=60.0) as http_client:
+        results, stats = await ingest_training_progressions(
+            supabase,
+            http_client=http_client,
+            api_key=settings.youtube_api_key,
+            channel_handle=channel_handle,
+            title_keyword=title_keyword,
+            max_results=max_results,
+        )
+
+    print(
+        f"training progression ingest: videos_scanned={stats.videos_scanned} "
+        f"title_matched={stats.videos_title_matched} "
+        f"videos_found={stats.videos_found} "
+        f"transcripts_fetched={stats.transcripts_fetched} "
+        f"transcripts_naturalized={stats.transcripts_naturalized} "
+        f"videos_processed={stats.videos_processed} "
+        f"videos_with_edges={stats.videos_with_edges} "
+        f"edges_created={stats.edges_created}"
+    )
+    for result in results:
+        print(f"- {result.video_title} [{result.status}] edges={result.edges_created} source_id={result.source_id}")

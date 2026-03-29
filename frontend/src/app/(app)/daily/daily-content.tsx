@@ -7,14 +7,20 @@ import { getMyGoal } from '@/lib/api/goals'
 import {
   createMealLog,
   createWorkoutLog,
+  getFeedbackHistory,
   getMealLogs,
   getWorkoutLogs,
   submitFeedback,
 } from '@/lib/api/logs'
 import { MealLogCard } from '@/components/daily/meal-log-card'
 import { WorkoutLogCard } from '@/components/daily/workout-log-card'
-import { FeedbackForm } from '@/components/daily/feedback-form'
+import {
+  FeedbackForm,
+  type FeedbackTarget,
+  type WorkoutFeedbackOption,
+} from '@/components/daily/feedback-form'
 import { AdaptationResult } from '@/components/daily/adaptation-result'
+import { FeedbackHistory } from '@/components/daily/feedback-history'
 import { DailyNutritionSummary } from '@/components/plans/daily-nutrition-summary'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -23,10 +29,11 @@ import { CalendarX2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
 import type { DailyPlanResponse, Exercise } from '@/types/plan'
-import type { AdaptationResponse } from '@/types/log'
+import type { AdaptationResponse, FeedbackEventDetailResponse } from '@/types/log'
 import type { GoalResponse } from '@/types/goal'
 import { ApiError } from '@/lib/api/client'
 import { getErrorInfo } from '@/lib/errors'
+import { buildTrainingSkillTreeHref } from '@/lib/training-skill-tree'
 import { cn } from '@/lib/utils'
 import { getTodayLocal, getMondayOfDateLocal } from '@/lib/date-utils'
 
@@ -53,8 +60,10 @@ export default function DailyContent() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [error, setError] = useState('')
   const [adaptationResult, setAdaptationResult] = useState<AdaptationResponse | null>(null)
+  const [feedbackHistory, setFeedbackHistory] = useState<FeedbackEventDetailResponse[]>([])
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const today = getTodayLocal()
@@ -70,19 +79,34 @@ export default function DailyContent() {
     }
   }, [])
 
+  const loadFeedbackHistory = useCallback(async (token: string) => {
+    setHistoryLoading(true)
+    try {
+      const history = await getFeedbackHistory(token, 10)
+      setFeedbackHistory(history)
+    } catch {
+      setFeedbackHistory([])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [])
+
   const loadData = useCallback(async () => {
     if (!session?.access_token) return
     const token = session.access_token
 
     try {
+      setHistoryLoading(true)
       const monday = getMondayOfDateLocal(today)
-      const [weeklyRes, mealRes, workoutRes, goalRes] = await Promise.all([
+      const [weeklyRes, mealRes, workoutRes, goalRes, historyRes] = await Promise.all([
         getWeeklyPlans(token, monday),
         getMealLogs(token, today),
         getWorkoutLogs(token, today),
         getMyGoal(token),
+        getFeedbackHistory(token, 10).catch(() => []),
       ])
       setGoal(goalRes)
+      setFeedbackHistory(historyRes)
 
       setHasWeeklyPlan(weeklyRes.plans.length > 0)
       const plan = weeklyRes.plans.find((p) => p.plan_date === today) ?? null
@@ -115,6 +139,7 @@ export default function DailyContent() {
     } catch {
       setError('データの取得に失敗しました')
     } finally {
+      setHistoryLoading(false)
       setLoading(false)
     }
   }, [session?.access_token, today])
@@ -168,20 +193,39 @@ export default function DailyContent() {
     }
   }
 
-  const handleFeedback = async (text: string) => {
+  const handleFeedback = async (text: string, target: FeedbackTarget, exerciseId?: string) => {
     if (!session?.access_token || !todayPlan) return
     setFeedbackLoading(true)
     setError('')
 
     try {
+      const dinnerFeedbackPayload = target === 'meal' && dinnerRecipe
+        ? {
+            domain: 'meal' as const,
+            meal_type: 'dinner' as const,
+            satisfaction: mealLogs.dinner.satisfaction,
+            completed: mealLogs.dinner.completed,
+          }
+        : {}
+      const workoutFeedbackPayload = target === 'workout' && exerciseId
+        ? {
+            domain: 'workout' as const,
+            exercise_id: exerciseId,
+            rpe: workoutLogs[exerciseId]?.rpe ?? null,
+            completed: workoutLogs[exerciseId]?.completed ?? false,
+          }
+        : {}
       const result = await submitFeedback(session.access_token, {
         plan_id: todayPlan.id,
         source_text: text,
+        ...dinnerFeedbackPayload,
+        ...workoutFeedbackPayload,
       })
       setAdaptationResult(result)
       if (result.new_plan) {
         setTodayPlan(result.new_plan)
       }
+      await loadFeedbackHistory(session.access_token)
       toast.success('フィードバックを送信しました')
     } catch (e) {
       const info = e instanceof ApiError ? getErrorInfo(e.errorCode) : getErrorInfo()
@@ -255,6 +299,14 @@ export default function DailyContent() {
     todayPlan.workout_plan && 'exercises' in todayPlan.workout_plan
       ? (todayPlan.workout_plan as { exercises: Exercise[] }).exercises
       : []
+  const skillTreeHref = buildTrainingSkillTreeHref(
+    todayPlan.plan_date,
+    todayPlan.plan_meta?.available_equipment
+  )
+  const workoutFeedbackOptions: WorkoutFeedbackOption[] = exercises.map((exercise) => ({
+    exerciseId: exercise.id,
+    label: exercise.name_ja,
+  }))
 
   // 今日の夕食レシピ情報
   const dinnerMeal = todayPlan.meal_plan.find((m) => m.meal_type === 'dinner')
@@ -336,14 +388,29 @@ export default function DailyContent() {
       {/* Workout Section */}
       {exercises.length > 0 && (
         <section className="mb-6">
-          <h2 className="mb-3 text-xl font-semibold">
-            トレーニング
-            {todayPlan.workout_plan && 'day_label' in todayPlan.workout_plan && (
-              <span className="ml-2 text-base font-normal text-muted-foreground">
-                ({(todayPlan.workout_plan as { day_label: string }).day_label})
-              </span>
-            )}
-          </h2>
+          <div className="mb-3 flex items-end justify-between gap-3">
+            <h2 className="text-xl font-semibold">
+              トレーニング
+              {todayPlan.workout_plan && 'day_label' in todayPlan.workout_plan && (
+                <span className="ml-2 text-base font-normal text-muted-foreground">
+                  ({(todayPlan.workout_plan as { day_label: string }).day_label})
+                </span>
+              )}
+            </h2>
+            <Link href={skillTreeHref} className="text-sm text-primary underline">
+              スキルツリーを見る
+            </Link>
+          </div>
+          {todayPlan.plan_meta?.training_recommendations?.length ? (
+            <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+              <p className="mb-2 font-medium">今回のトレーニング調整</p>
+              <ul className="space-y-1">
+                {todayPlan.plan_meta.training_recommendations.map((rec) => (
+                  <li key={`${rec.from_exercise_id}-${rec.to_exercise_id}`}>{rec.reason}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="space-y-3">
             {exercises.map((ex) => (
               <WorkoutLogCard
@@ -406,8 +473,14 @@ export default function DailyContent() {
       <Separator className="my-6" />
 
       {/* Feedback Section */}
-      <section>
-        <FeedbackForm onSubmit={handleFeedback} isLoading={feedbackLoading} />
+      <section className="space-y-4">
+        <FeedbackForm
+          onSubmit={handleFeedback}
+          isLoading={feedbackLoading}
+          enableMealFeedback={Boolean(dinnerRecipe)}
+          workoutOptions={workoutFeedbackOptions}
+        />
+        <FeedbackHistory items={feedbackHistory} isLoading={historyLoading} />
       </section>
     </div>
   )

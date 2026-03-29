@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class MuscleGroup(StrEnum):
@@ -21,6 +21,7 @@ class Exercise(BaseModel):
     sets: int
     reps: int | str
     rest_seconds: int = 60
+    required_equipment: list[str] = Field(default_factory=lambda: ["none"])
 
 
 class TrainingDay(BaseModel):

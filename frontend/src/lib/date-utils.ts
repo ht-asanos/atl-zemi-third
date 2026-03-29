@@ -1,3 +1,7 @@
+function formatLocalDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 /** UTC ベースで次の月曜日を YYYY-MM-DD で返す */
 export function getNextMondayUTC(): string {
   const now = new Date()
@@ -9,8 +13,7 @@ export function getNextMondayUTC(): string {
 
 /** ローカルタイムで今日を YYYY-MM-DD で返す */
 export function getTodayLocal(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return formatLocalDate(new Date())
 }
 
 /** ローカルタイムで指定日の月曜日を YYYY-MM-DD で返す */
@@ -19,5 +22,5 @@ export function getMondayOfDateLocal(dateStr: string): string {
   const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
-  return d.toISOString().slice(0, 10)
+  return formatLocalDate(d)
 }

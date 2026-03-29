@@ -33,6 +33,7 @@ from app.services.youtube_transcript_service import (
     assess_transcript_quality,
     extract_video_id,
     fetch_transcript,
+    get_transcript_naturalization_reason,
     naturalize_auto_transcript,
 )
 from app.utils.text_normalize import is_accompaniment_for_staple
@@ -96,8 +97,11 @@ async def youtube_extract(
     quality = assess_transcript_quality(entries)
     text = transcript.get("text", "")
 
-    # 自動字幕なら自然化
-    if transcript.get("is_generated"):
+    # 自動字幕、または品質が低い字幕は自然化
+    naturalization_reason = get_transcript_naturalization_reason(
+        {**transcript, "quality": quality},
+    )
+    if naturalization_reason:
         try:
             text = await naturalize_auto_transcript(text)
         except Exception:
@@ -340,8 +344,9 @@ async def youtube_batch_adapt(
 
         text = transcript.get("text", "")
 
-        # 自動字幕なら自然化
-        if transcript.get("is_generated"):
+        # 自動字幕、または品質が低い字幕は自然化
+        naturalization_reason = get_transcript_naturalization_reason(transcript)
+        if naturalization_reason:
             try:
                 text = await naturalize_auto_transcript(text)
             except Exception:

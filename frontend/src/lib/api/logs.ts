@@ -1,12 +1,13 @@
 import { apiClient } from './client'
 import type {
-  CreateMealLogRequest,
-  MealLogResponse,
-  CreateWorkoutLogRequest,
-  WorkoutLogResponse,
-  CreateFeedbackRequest,
   AdaptationResponse,
+  CreateMealLogRequest,
+  CreateFeedbackRequest,
+  CreateWorkoutLogRequest,
+  FeedbackEventDetailResponse,
   FeedbackTagResponse,
+  MealLogResponse,
+  WorkoutLogResponse,
 } from '@/types/log'
 
 export async function createMealLog(
@@ -67,6 +68,28 @@ export async function getFeedbackTags(
 ): Promise<{ tags: FeedbackTagResponse[] }> {
   return apiClient<{ tags: FeedbackTagResponse[] }>(
     `/feedback/${planId}`,
+    {},
+    token
+  )
+}
+
+export async function getFeedbackHistory(
+  token: string,
+  limit = 20
+): Promise<FeedbackEventDetailResponse[]> {
+  return apiClient<FeedbackEventDetailResponse[]>(
+    `/feedback/history?limit=${limit}`,
+    {},
+    token
+  )
+}
+
+export async function getFeedbackHistoryDetail(
+  token: string,
+  eventId: string
+): Promise<FeedbackEventDetailResponse> {
+  return apiClient<FeedbackEventDetailResponse>(
+    `/feedback/history/${eventId}`,
     {},
     token
   )

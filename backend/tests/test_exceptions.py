@@ -24,6 +24,7 @@ class TestErrorCode:
             "GOAL_NOT_FOUND",
             "PROFILE_CONFLICT",
             "STAPLE_INVALID",
+            "FEEDBACK_NOT_FOUND",
         ]
         actual = [c.value for c in ErrorCode]
         for code in expected:

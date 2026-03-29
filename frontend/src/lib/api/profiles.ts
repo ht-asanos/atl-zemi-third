@@ -1,5 +1,5 @@
 import { apiClient, ApiError } from './client'
-import type { CreateProfileRequest, ProfileResponse, UpdateProfileResponse } from '@/types/profile'
+import type { AdminStatusResponse, CreateProfileRequest, ProfileResponse, UpdateProfileResponse } from '@/types/profile'
 
 export async function createProfile(
   token: string,
@@ -30,4 +30,10 @@ export async function updateProfile(
     method: 'PUT',
     body: JSON.stringify(data),
   }, token)
+}
+
+export async function getMyAdminStatus(
+  token: string
+): Promise<AdminStatusResponse> {
+  return apiClient<AdminStatusResponse>('/profiles/me/admin-status', {}, token)
 }

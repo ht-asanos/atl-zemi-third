@@ -33,6 +33,22 @@ async def upsert_rating(supabase: AsyncClient, user_id: UUID, recipe_id: UUID, r
     )
 
 
+async def get_recipe_rating(supabase: AsyncClient, user_id: UUID, recipe_id: UUID) -> int | None:
+    """単一レシピの現在評価を返す。未評価なら None。"""
+    response = await (
+        supabase.table("user_recipe_ratings")
+        .select("rating")
+        .eq("user_id", str(user_id))
+        .eq("recipe_id", str(recipe_id))
+        .limit(1)
+        .execute()
+    )
+    rows: list[dict[str, Any]] = response.data or []
+    if not rows:
+        return None
+    return rows[0]["rating"]
+
+
 async def get_ratings_for_user(supabase: AsyncClient, user_id: UUID) -> dict[UUID, int]:
     """ユーザーの全評価を取得する。{recipe_id: rating}"""
     response = await (

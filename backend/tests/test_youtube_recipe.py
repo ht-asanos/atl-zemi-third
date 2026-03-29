@@ -180,6 +180,47 @@ async def test_fetch_channel_videos_by_query_skips_shorts():
     assert [r["video_id"] for r in result] == ["vid2"]
 
 
+@pytest.mark.asyncio
+async def test_fetch_channel_videos_by_query_paginates_until_max_results():
+    first_page = _mock_httpx_response(
+        200,
+        {
+            "items": [
+                {
+                    "id": {"videoId": "vid1"},
+                    "snippet": {"title": "動画1", "publishedAt": "2024-01-01T00:00:00Z"},
+                }
+            ],
+            "nextPageToken": "token-2",
+        },
+    )
+    second_page = _mock_httpx_response(
+        200,
+        {
+            "items": [
+                {
+                    "id": {"videoId": "vid2"},
+                    "snippet": {"title": "動画2", "publishedAt": "2024-01-02T00:00:00Z"},
+                }
+            ]
+        },
+    )
+    client = AsyncMock(spec=httpx.AsyncClient)
+    client.get = AsyncMock(side_effect=[first_page, second_page])
+
+    result = await fetch_channel_videos_by_query(
+        client,
+        "fake_key",
+        "UC_test123",
+        query="ができるなら",
+        max_results=2,
+        include_shorts=True,
+    )
+
+    assert [r["video_id"] for r in result] == ["vid1", "vid2"]
+    assert client.get.await_count == 2
+
+
 # ---------------------------------------------------------------------------
 # 正常系: JSON パース・信頼性ゲート
 # ---------------------------------------------------------------------------

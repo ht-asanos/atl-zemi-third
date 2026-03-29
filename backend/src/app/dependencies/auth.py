@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 
-__all__ = ["get_current_user_id", "get_admin_user_id"]
+__all__ = ["get_current_user_id", "get_admin_user_id", "is_admin_user_id"]
 
 _bearer = HTTPBearer()
 
@@ -100,12 +100,16 @@ def get_current_user_id(
         ) from e
 
 
+def is_admin_user_id(user_id: UUID) -> bool:
+    allowed = {UUID(uid.strip()) for uid in settings.admin_user_ids.split(",") if uid.strip()}
+    return bool(allowed and user_id in allowed)
+
+
 def get_admin_user_id(
     user_id: UUID = Depends(get_current_user_id),
 ) -> UUID:
     """管理者限定。ADMIN_USER_IDS に含まれない場合は 403。"""
-    allowed = {UUID(uid.strip()) for uid in settings.admin_user_ids.split(",") if uid.strip()}
-    if not allowed or user_id not in allowed:
+    if not is_admin_user_id(user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

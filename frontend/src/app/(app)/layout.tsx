@@ -6,7 +6,7 @@ import { useAuth } from '@/providers/auth-provider'
 import { DropdownMenu, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown-menu'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, signOut } = useAuth()
+  const { user, isAdmin, signOut } = useAuth()
   const router = useRouter()
 
   const handleSignOut = async () => {
@@ -30,6 +30,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <Link href="/daily" className="text-muted-foreground hover:text-foreground">
                 Today
               </Link>
+              {isAdmin ? (
+                <Link href="/admin/training-progressions" className="text-muted-foreground hover:text-foreground">
+                  管理
+                </Link>
+              ) : null}
             </nav>
           </div>
           {user && (
@@ -51,6 +56,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <DropdownItem onClick={() => router.push('/staple?from=settings')}>
                 プラン生成設定
               </DropdownItem>
+              {isAdmin ? (
+                <DropdownItem onClick={() => router.push('/admin/training-progressions')}>
+                  管理画面
+                </DropdownItem>
+              ) : null}
               <DropdownSeparator />
               <DropdownItem variant="destructive" onClick={handleSignOut}>
                 ログアウト

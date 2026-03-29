@@ -46,6 +46,7 @@ class WeeklyPlanRequest(BaseModel):
     staple_name: str | None = None
     mode: Literal["classic", "recipe"] = "recipe"
     recipe_filters: RecipeFilters | None = None
+    available_equipment: list[Literal["none", "pull_up_bar", "dip_bars", "dumbbells"]] | None = None
 
 
 class PatchMealRequest(BaseModel):
@@ -60,6 +61,8 @@ class PlanMeta(BaseModel):
     mode: str | None = None
     staple_name: str | None = None
     recipe_filters: RecipeFilters | None = None
+    available_equipment: list[Literal["none", "pull_up_bar", "dip_bars", "dumbbells"]] | None = None
+    training_recommendations: list[dict[str, str]] | None = None
     validation: dict | None = None
     validation_issues: list[str] | None = None
     duplicate_count: int | None = None
