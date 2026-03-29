@@ -16,9 +16,9 @@ interface NutritionBar {
 }
 
 function progressColor(pct: number): string {
-  if (pct >= 80 && pct <= 120) return 'bg-green-500'
-  if ((pct >= 60 && pct < 80) || (pct > 120 && pct <= 140)) return 'bg-amber-400'
-  return 'bg-red-400'
+  if (pct >= 80 && pct <= 120) return 'bg-success'
+  if ((pct >= 60 && pct < 80) || (pct > 120 && pct <= 140)) return 'bg-warning'
+  return 'bg-destructive'
 }
 
 export function DailyNutritionSummary({ meals, goal }: DailyNutritionSummaryProps) {

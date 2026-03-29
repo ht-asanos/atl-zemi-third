@@ -20,7 +20,8 @@ import { RecipeDetailModal } from '@/components/plans/recipe-detail-modal'
 import { RecipeRegenerateDialog } from '@/components/plans/recipe-regenerate-dialog'
 import { ShoppingList } from '@/components/plans/shopping-list'
 import { Button } from '@/components/ui/button'
-import { Spinner, InlineSpinner } from '@/components/ui/spinner'
+import { InlineSpinner } from '@/components/ui/spinner'
+import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { ApiError } from '@/lib/api/client'
 import { getErrorInfo } from '@/lib/errors'
@@ -298,9 +299,15 @@ export default function PlansContent() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Spinner />
-        <p className="ml-2 text-muted-foreground">読み込み中...</p>
+      <div className="mx-auto max-w-3xl p-6 space-y-4">
+        <div className="flex gap-2">
+          {Array.from({ length: 7 }).map((_, i) => (
+            <Skeleton key={i} className="h-9 flex-1 rounded-md" />
+          ))}
+        </div>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 w-full rounded-lg" />
+        ))}
       </div>
     )
   }

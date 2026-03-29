@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -33,7 +34,7 @@ export function WorkoutLogCard({
   onRpeChange,
 }: WorkoutLogCardProps) {
   return (
-    <Card>
+    <Card className="transition-shadow duration-200 hover:shadow-sm">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">
           {nameJa}
@@ -43,18 +44,19 @@ export function WorkoutLogCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <Checkbox
             checked={completed}
-            onChange={(e) => onCompletedChange(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
+            onCheckedChange={onCompletedChange}
+            className="transition-transform duration-150 active:scale-90"
           />
-          完了
+          <span className={completed ? 'text-foreground font-medium' : 'text-muted-foreground'}>
+            完了
+          </span>
         </label>
 
         {completed && (
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 animate-fade-in">
             <div>
               <Label className="text-xs">セット数</Label>
               <Input

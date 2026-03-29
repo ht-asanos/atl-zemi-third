@@ -119,16 +119,16 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
                   {meal.nutrition_status === 'failed' ? (
                     <>
                       <Badge className="bg-primary/10 text-primary font-medium">-- kcal</Badge>
-                      <Badge variant="outline" className="border-blue-200 text-blue-700">P --g</Badge>
-                      <Badge variant="outline" className="border-amber-200 text-amber-700">F --g</Badge>
-                      <Badge variant="outline" className="border-green-200 text-green-700">C --g</Badge>
+                      <Badge variant="outline" className="border-nutrition-protein/30 text-nutrition-protein">P --g</Badge>
+                      <Badge variant="outline" className="border-nutrition-fat/30 text-nutrition-fat">F --g</Badge>
+                      <Badge variant="outline" className="border-nutrition-carbs/30 text-nutrition-carbs">C --g</Badge>
                     </>
                   ) : (
                     <>
                       <Badge className="bg-primary/10 text-primary font-medium">{Math.round(recipeNutrition.kcal)} kcal</Badge>
-                      <Badge variant="outline" className="border-blue-200 text-blue-700">P {recipeNutrition.protein_g.toFixed(1)}g</Badge>
-                      <Badge variant="outline" className="border-amber-200 text-amber-700">F {recipeNutrition.fat_g.toFixed(1)}g</Badge>
-                      <Badge variant="outline" className="border-green-200 text-green-700">C {recipeNutrition.carbs_g.toFixed(1)}g</Badge>
+                      <Badge variant="outline" className="border-nutrition-protein/30 text-nutrition-protein">P {recipeNutrition.protein_g.toFixed(1)}g</Badge>
+                      <Badge variant="outline" className="border-nutrition-fat/30 text-nutrition-fat">F {recipeNutrition.fat_g.toFixed(1)}g</Badge>
+                      <Badge variant="outline" className="border-nutrition-carbs/30 text-nutrition-carbs">C {recipeNutrition.carbs_g.toFixed(1)}g</Badge>
                     </>
                   )}
                 </div>
@@ -155,9 +155,9 @@ export function MealSection({ meals, mealIndex, onChangeRecipe, onToggleFavorite
         <Separator />
         <div className="flex flex-wrap gap-2">
           <Badge className="bg-primary/10 text-primary font-medium">{Math.round(meal.total_kcal)} kcal</Badge>
-          <Badge variant="outline" className="border-blue-200 text-blue-700">P {meal.total_protein_g.toFixed(1)}g</Badge>
-          <Badge variant="outline" className="border-amber-200 text-amber-700">F {meal.total_fat_g.toFixed(1)}g</Badge>
-          <Badge variant="outline" className="border-green-200 text-green-700">C {meal.total_carbs_g.toFixed(1)}g</Badge>
+          <Badge variant="outline" className="border-nutrition-protein/30 text-nutrition-protein">P {meal.total_protein_g.toFixed(1)}g</Badge>
+          <Badge variant="outline" className="border-nutrition-fat/30 text-nutrition-fat">F {meal.total_fat_g.toFixed(1)}g</Badge>
+          <Badge variant="outline" className="border-nutrition-carbs/30 text-nutrition-carbs">C {meal.total_carbs_g.toFixed(1)}g</Badge>
           <Badge variant="outline">{meal.total_price_yen}円</Badge>
           <Badge variant="outline">{meal.total_cooking_minutes}分</Badge>
         </div>

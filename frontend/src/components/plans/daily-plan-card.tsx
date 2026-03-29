@@ -2,9 +2,11 @@
 
 import Link from 'next/link'
 import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
 import { DAY_NAMES } from '@/lib/constants'
 import { getTodayLocal } from '@/lib/date-utils'
 import { buildTrainingSkillTreeHref } from '@/lib/training-skill-tree'
+import { cn } from '@/lib/utils'
 import { MealSection } from './meal-section'
 import { WorkoutSection } from './workout-section'
 import { DailyNutritionSummary } from './daily-nutrition-summary'
@@ -34,9 +36,14 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
   const isRecipeMode = plan.meal_plan.some((m) => m.meal_type != null)
 
   return (
-    <div className="space-y-4">
+    <div className={cn('space-y-4 rounded-lg p-1 transition-all', isToday && 'ring-2 ring-primary bg-primary/5 p-4')}>
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold">{dayLabel}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-xl font-bold">{dayLabel}</h3>
+          {isToday && (
+            <Badge className="bg-primary text-primary-foreground text-xs">今日</Badge>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           {isToday && (
             <Link
@@ -58,7 +65,7 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-lg font-semibold">食事</h4>
+        <h4 className="text-base font-semibold">食事</h4>
         {plan.meal_plan.map((meal, i) => (
           <MealSection
             key={i}

@@ -1,13 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
 import { DropdownMenu, DropdownItem, DropdownSeparator } from '@/components/ui/dropdown-menu'
+import { BottomNav } from '@/components/ui/bottom-nav'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, signOut } = useAuth()
   const router = useRouter()
+  const pathname = usePathname()
 
   const handleSignOut = async () => {
     await signOut()
@@ -17,21 +19,35 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const email = user?.email || ''
   const initial = email.charAt(0).toUpperCase()
 
+  const isActive = (path: string) => pathname.startsWith(path)
+
   return (
     <div className="min-h-screen">
       <header className="border-b">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
             <h2 className="text-lg font-semibold">自炊 x トレーニング</h2>
-            <nav className="flex gap-2 text-sm">
-              <Link href="/plans" className="text-muted-foreground hover:text-foreground">
+            <nav className="hidden sm:flex gap-2 text-sm">
+              <Link
+                href="/plans"
+                aria-current={isActive('/plans') ? 'page' : undefined}
+                className={`pb-0.5 transition-colors ${isActive('/plans') ? 'text-foreground font-medium border-b-2 border-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
                 週間プラン
               </Link>
-              <Link href="/daily" className="text-muted-foreground hover:text-foreground">
+              <Link
+                href="/daily"
+                aria-current={isActive('/daily') ? 'page' : undefined}
+                className={`pb-0.5 transition-colors ${isActive('/daily') ? 'text-foreground font-medium border-b-2 border-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
                 Today
               </Link>
               {isAdmin ? (
-                <Link href="/admin/training-progressions" className="text-muted-foreground hover:text-foreground">
+                <Link
+                  href="/admin/training-progressions"
+                  aria-current={isActive('/admin') ? 'page' : undefined}
+                  className={`pb-0.5 transition-colors ${isActive('/admin') ? 'text-foreground font-medium border-b-2 border-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                >
                   管理
                 </Link>
               ) : null}
@@ -69,7 +85,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           )}
         </div>
       </header>
-      <main>{children}</main>
+      <main className="pb-16 sm:pb-0">{children}</main>
+      <BottomNav isAdmin={!!isAdmin} onSignOut={handleSignOut} />
     </div>
   )
 }
