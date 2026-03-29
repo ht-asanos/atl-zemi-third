@@ -1,6 +1,7 @@
 'use client'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Star } from 'lucide-react'
 import { MEAL_TYPE_LABELS } from '@/lib/constants'
 
@@ -20,23 +21,24 @@ export function MealLogCard({
   onSatisfactionChange,
 }: MealLogCardProps) {
   return (
-    <Card>
+    <Card className="transition-shadow duration-200 hover:shadow-sm">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">{MEAL_TYPE_LABELS[mealType] || mealType}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
+        <label className="flex cursor-pointer items-center gap-2 text-sm">
+          <Checkbox
             checked={completed}
-            onChange={(e) => onCompletedChange(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
+            onCheckedChange={onCompletedChange}
+            className="transition-transform duration-150 active:scale-90"
           />
-          完了
+          <span className={completed ? 'text-foreground font-medium' : 'text-muted-foreground'}>
+            完了
+          </span>
         </label>
 
         {completed && (
-          <div>
+          <div className="animate-fade-in">
             <span className="text-sm text-muted-foreground">満足度</span>
             <div className="mt-1 flex gap-1">
               {[1, 2, 3, 4, 5].map((n) => (
@@ -45,12 +47,13 @@ export function MealLogCard({
                   type="button"
                   onClick={() => onSatisfactionChange(satisfaction === n ? null : n)}
                   aria-label={`満足度${n}`}
+                  className="transition-transform duration-150 hover:scale-110 active:scale-95"
                 >
                   <Star
-                    className={`h-5 w-5 transition-colors ${
+                    className={`h-5 w-5 transition-colors duration-150 ${
                       satisfaction !== null && n <= satisfaction
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-gray-300'
+                        ? 'fill-warning text-warning'
+                        : 'text-muted'
                     }`}
                   />
                 </button>

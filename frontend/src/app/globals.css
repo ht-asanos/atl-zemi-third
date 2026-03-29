@@ -22,6 +22,20 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /* セマンティックカラー */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  /* 栄養素カラー */
+  --color-nutrition-protein: var(--nutrition-protein);
+  --color-nutrition-protein-bg: var(--nutrition-protein-bg);
+  --color-nutrition-fat: var(--nutrition-fat);
+  --color-nutrition-fat-bg: var(--nutrition-fat-bg);
+  --color-nutrition-carbs: var(--nutrition-carbs);
+  --color-nutrition-carbs-bg: var(--nutrition-carbs-bg);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -51,6 +65,24 @@
   --input: #e5e5e5;
   --ring: #0a0a0a;
   --radius: 0.625rem;
+  /* セマンティックカラー */
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  /* 栄養素カラー（PFC） */
+  --nutrition-protein: #1d4ed8;
+  --nutrition-protein-bg: #dbeafe;
+  --nutrition-fat: #d97706;
+  --nutrition-fat-bg: #fef3c7;
+  --nutrition-carbs: #059669;
+  --nutrition-carbs-bg: #d1fae5;
+  /* トランジション */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
 }
 
 .dark {
@@ -73,6 +105,19 @@
   --border: #262626;
   --input: #262626;
   --ring: #d4d4d4;
+  /* セマンティックカラー（dark） */
+  --success: #22c55e;
+  --success-foreground: #052e16;
+  --warning: #f59e0b;
+  --warning-foreground: #1c1917;
+  --info: #60a5fa;
+  --info-foreground: #1e3a5f;
+  --nutrition-protein: #93c5fd;
+  --nutrition-protein-bg: #1e3a5f;
+  --nutrition-fat: #fcd34d;
+  --nutrition-fat-bg: #451a03;
+  --nutrition-carbs: #6ee7b7;
+  --nutrition-carbs-bg: #064e3b;
 }
 
 @layer base {
@@ -83,3 +128,31 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* アニメーション */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes celebrate {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.08); }
+  70%  { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+
+.animate-fade-in   { animation: fade-in var(--transition-normal) ease forwards; }
+.animate-slide-up  { animation: slide-up var(--transition-slow) ease forwards; }
+.animate-scale-in  { animation: scale-in var(--transition-normal) ease forwards; }
+.animate-celebrate { animation: celebrate 400ms ease forwards; }

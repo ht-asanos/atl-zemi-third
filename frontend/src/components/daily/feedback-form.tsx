@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { InlineSpinner } from '@/components/ui/spinner'
 
 export type FeedbackTarget = 'general' | 'meal' | 'workout'
@@ -79,13 +80,12 @@ export function FeedbackForm({
           )}
         </div>
       )}
-      <textarea
+      <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="例: トレーニングがきつすぎた、主食に飽きた..."
         maxLength={1000}
         rows={3}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       {enableMealFeedback && target === 'meal' && (
         <p className="text-xs text-muted-foreground">

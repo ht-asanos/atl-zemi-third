@@ -30,20 +30,16 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
     plan.plan_meta?.available_equipment
   )
 
-  // recipe モード判定: meal_plan 内に meal_type があれば recipe モード
   const isRecipeMode = plan.meal_plan.some((m) => m.meal_type != null)
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-xl font-bold">{dayLabel}</h3>
+        <h3 className="text-base font-semibold text-muted-foreground">{dayLabel}</h3>
         <div className="flex items-center gap-3">
           {isToday && (
-            <Link
-              href="/daily"
-              className="text-sm text-primary underline"
-            >
-              今日のログを記録
+            <Link href="/daily" className="text-sm text-primary underline">
+              ログを記録
             </Link>
           )}
           {!isRecipeMode && onChangeMeal && (
@@ -58,7 +54,7 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-lg font-semibold">食事</h4>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">食事</p>
         {plan.meal_plan.map((meal, i) => (
           <MealSection
             key={i}
@@ -81,7 +77,7 @@ export function DailyPlanCard({ plan, goal, onChangeMeal, onChangeRecipe, onTogg
       <Separator />
 
       <div>
-        <h4 className="mb-2 text-lg font-semibold">トレーニング</h4>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">トレーニング</p>
         <WorkoutSection
           workout={plan.workout_plan}
           recommendations={plan.plan_meta?.training_recommendations}

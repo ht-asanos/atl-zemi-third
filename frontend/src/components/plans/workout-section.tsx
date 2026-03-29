@@ -29,7 +29,7 @@ export function WorkoutSection({ workout, recommendations, skillTreeHref }: Work
         ) : null}
       </div>
       {recommendations && recommendations.length > 0 && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+        <div className="rounded-md border border-info/30 bg-info/5 p-3 text-sm text-info">
           <p className="mb-2 font-medium">今回のトレーニング調整</p>
           <ul className="space-y-1">
             {recommendations.map((rec) => (

@@ -22,8 +22,9 @@ import {
 import { AdaptationResult } from '@/components/daily/adaptation-result'
 import { FeedbackHistory } from '@/components/daily/feedback-history'
 import { DailyNutritionSummary } from '@/components/plans/daily-nutrition-summary'
+import { DailyProgressBar } from '@/components/daily/daily-progress-bar'
+import { CollapsibleSection } from '@/components/ui/collapsible-section'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import { Spinner, InlineSpinner } from '@/components/ui/spinner'
 import { CalendarX2, Check } from 'lucide-react'
 import { toast } from 'sonner'
@@ -59,6 +60,7 @@ export default function DailyContent() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [hasUnsaved, setHasUnsaved] = useState(false)
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   const [historyLoading, setHistoryLoading] = useState(true)
   const [error, setError] = useState('')
@@ -136,6 +138,7 @@ export default function DailyContent() {
         }
         setWorkoutLogs(restoredWorkouts)
       }
+      setHasUnsaved(false)
     } catch {
       setError('データの取得に失敗しました')
     } finally {
@@ -181,8 +184,20 @@ export default function DailyContent() {
       )
 
       await Promise.all([...mealPromises, ...workoutPromises])
-      toast.success('記録を保存しました')
+
+      const allMealsDone = MEAL_TYPES.every((t) => mealLogs[t].completed)
+      const allWorkoutsDone = Object.values(workoutLogs).every((w) => w.completed)
+      const hasWorkouts = Object.keys(workoutLogs).length > 0
+      const allDone = allMealsDone && (!hasWorkouts || allWorkoutsDone)
+
+      if (allDone) {
+        toast.success('🎉 今日のタスクをすべて達成しました！', { duration: 4000 })
+      } else {
+        toast.success('記録を保存しました')
+      }
+
       setSaved(true)
+      setHasUnsaved(false)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
       savedTimerRef.current = setTimeout(() => setSaved(false), 2000)
     } catch {
@@ -308,18 +323,36 @@ export default function DailyContent() {
     label: exercise.name_ja,
   }))
 
-  // 今日の夕食レシピ情報
   const dinnerMeal = todayPlan.meal_plan.find((m) => m.meal_type === 'dinner')
   const dinnerRecipe = dinnerMeal?.recipe
 
+  const completedMeals = MEAL_TYPES.filter((t) => mealLogs[t].completed).length
+  const completedWorkouts = Object.values(workoutLogs).filter((w) => w.completed).length
+
+  const nutritionSummary = (() => {
+    const totalKcal = todayPlan.meal_plan.reduce(
+      (sum, m) => sum + (m.recipe?.nutrition_per_serving?.kcal ?? 0),
+      0
+    )
+    return totalKcal > 0 ? `${Math.round(totalKcal)} kcal` : null
+  })()
+
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Today - {today}</h1>
+    <div className="mx-auto max-w-3xl px-4 pb-24 pt-6 sm:px-6">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-bold sm:text-3xl">Today - {today}</h1>
         <Link href="/plans" className="text-sm text-muted-foreground hover:text-foreground">
-          &larr; 週間プランに戻る
+          &larr; 週間プラン
         </Link>
       </div>
+
+      {/* 1. 進捗インジケータ (ツァイガルニク効果) */}
+      <DailyProgressBar
+        completedMeals={completedMeals}
+        totalMeals={MEAL_TYPES.length}
+        completedWorkouts={completedWorkouts}
+        totalWorkouts={exercises.length}
+      />
 
       {error && (
         <div className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -333,38 +366,9 @@ export default function DailyContent() {
         </div>
       )}
 
-      {/* Today's Dinner Recipe Summary */}
-      {dinnerRecipe && (
-        <section className="mb-6 rounded-md border p-4">
-          <h2 className="mb-2 text-lg font-semibold">今日の夕食レシピ</h2>
-          <div className="flex items-center gap-4">
-            {dinnerRecipe.image_url && (
-              <img
-                src={dinnerRecipe.image_url}
-                alt={dinnerRecipe.title}
-                className="h-16 w-16 rounded-md object-cover"
-              />
-            )}
-            <div>
-              <p className="font-medium">{dinnerRecipe.title}</p>
-              {dinnerRecipe.nutrition_per_serving?.kcal != null && (
-                <p className="text-sm text-muted-foreground">{dinnerRecipe.nutrition_per_serving.kcal} kcal</p>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Daily Nutrition Summary */}
-      {todayPlan.meal_plan.length > 0 && (
-        <div className="mb-6">
-          <DailyNutritionSummary meals={todayPlan.meal_plan} goal={goal} />
-        </div>
-      )}
-
-      {/* Meal Section */}
-      <section className="mb-6">
-        <h2 className="mb-3 text-xl font-semibold">食事</h2>
+      {/* 2. 食事ログ */}
+      <section className="mb-4">
+        <h2 className="mb-3 text-lg font-semibold">食事</h2>
         <div className="grid gap-3 sm:grid-cols-3">
           {MEAL_TYPES.map((mealType) => (
             <MealLogCard
@@ -372,37 +376,37 @@ export default function DailyContent() {
               mealType={mealType}
               completed={mealLogs[mealType].completed}
               satisfaction={mealLogs[mealType].satisfaction}
-              onCompletedChange={(completed) =>
+              onCompletedChange={(completed) => {
                 setMealLogs((prev) => ({ ...prev, [mealType]: { ...prev[mealType], completed } }))
-              }
-              onSatisfactionChange={(satisfaction) =>
+                setHasUnsaved(true)
+              }}
+              onSatisfactionChange={(satisfaction) => {
                 setMealLogs((prev) => ({ ...prev, [mealType]: { ...prev[mealType], satisfaction } }))
-              }
+                setHasUnsaved(true)
+              }}
             />
           ))}
         </div>
       </section>
 
-      <Separator className="my-6" />
-
-      {/* Workout Section */}
+      {/* 3. トレーニングログ */}
       {exercises.length > 0 && (
-        <section className="mb-6">
+        <section className="mb-4">
           <div className="mb-3 flex items-end justify-between gap-3">
-            <h2 className="text-xl font-semibold">
+            <h2 className="text-lg font-semibold">
               トレーニング
               {todayPlan.workout_plan && 'day_label' in todayPlan.workout_plan && (
-                <span className="ml-2 text-base font-normal text-muted-foreground">
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
                   ({(todayPlan.workout_plan as { day_label: string }).day_label})
                 </span>
               )}
             </h2>
             <Link href={skillTreeHref} className="text-sm text-primary underline">
-              スキルツリーを見る
+              スキルツリー
             </Link>
           </div>
           {todayPlan.plan_meta?.training_recommendations?.length ? (
-            <div className="mb-3 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            <div className="mb-3 rounded-md border border-info/30 bg-info/5 p-3 text-sm text-info">
               <p className="mb-2 font-medium">今回のトレーニング調整</p>
               <ul className="space-y-1">
                 {todayPlan.plan_meta.training_recommendations.map((rec) => (
@@ -423,65 +427,102 @@ export default function DailyContent() {
                 sets={workoutLogs[ex.id]?.sets ?? (typeof ex.sets === 'number' ? ex.sets : 0)}
                 reps={workoutLogs[ex.id]?.reps ?? (typeof ex.reps === 'number' ? ex.reps : 0)}
                 rpe={workoutLogs[ex.id]?.rpe ?? null}
-                onCompletedChange={(completed) =>
-                  setWorkoutLogs((prev) => ({
-                    ...prev,
-                    [ex.id]: { ...prev[ex.id], completed },
-                  }))
-                }
-                onSetsChange={(sets) =>
-                  setWorkoutLogs((prev) => ({
-                    ...prev,
-                    [ex.id]: { ...prev[ex.id], sets },
-                  }))
-                }
-                onRepsChange={(reps) =>
-                  setWorkoutLogs((prev) => ({
-                    ...prev,
-                    [ex.id]: { ...prev[ex.id], reps },
-                  }))
-                }
-                onRpeChange={(rpe) =>
-                  setWorkoutLogs((prev) => ({
-                    ...prev,
-                    [ex.id]: { ...prev[ex.id], rpe },
-                  }))
-                }
+                onCompletedChange={(completed) => {
+                  setWorkoutLogs((prev) => ({ ...prev, [ex.id]: { ...prev[ex.id], completed } }))
+                  setHasUnsaved(true)
+                }}
+                onSetsChange={(sets) => {
+                  setWorkoutLogs((prev) => ({ ...prev, [ex.id]: { ...prev[ex.id], sets } }))
+                  setHasUnsaved(true)
+                }}
+                onRepsChange={(reps) => {
+                  setWorkoutLogs((prev) => ({ ...prev, [ex.id]: { ...prev[ex.id], reps } }))
+                  setHasUnsaved(true)
+                }}
+                onRpeChange={(rpe) => {
+                  setWorkoutLogs((prev) => ({ ...prev, [ex.id]: { ...prev[ex.id], rpe } }))
+                  setHasUnsaved(true)
+                }}
               />
             ))}
           </div>
         </section>
       )}
 
-      <Separator className="my-6" />
+      {/* 4. フィードバック (アコーディオン) */}
+      <div className="mb-4">
+        <CollapsibleSection title="フィードバック" defaultOpen={false}>
+          <FeedbackForm
+            onSubmit={handleFeedback}
+            isLoading={feedbackLoading}
+            enableMealFeedback={Boolean(dinnerRecipe)}
+            workoutOptions={workoutFeedbackOptions}
+          />
+        </CollapsibleSection>
+      </div>
 
-      {/* Save Button */}
-      <Button
-        onClick={handleSave}
-        disabled={saving}
-        className={cn('mb-6 w-full', saved && 'bg-green-600 hover:bg-green-600')}
-      >
-        {saving ? (
-          <><InlineSpinner /> 保存中...</>
-        ) : saved ? (
-          <><Check className="mr-2 h-4 w-4" /> 保存しました</>
-        ) : (
-          '記録する'
-        )}
-      </Button>
+      {/* 5. 栄養サマリー (折り畳み可能) */}
+      {todayPlan.meal_plan.length > 0 && (
+        <div className="mb-4">
+          <CollapsibleSection
+            title="栄養サマリー"
+            summary={nutritionSummary ?? undefined}
+            defaultOpen={false}
+          >
+            {dinnerRecipe && (
+              <div className="mb-3 flex items-center gap-3">
+                {dinnerRecipe.image_url && (
+                  <img
+                    src={dinnerRecipe.image_url}
+                    alt={dinnerRecipe.title}
+                    className="h-12 w-12 rounded-md object-cover"
+                  />
+                )}
+                <div>
+                  <p className="text-sm font-medium">{dinnerRecipe.title}</p>
+                  {dinnerRecipe.nutrition_per_serving?.kcal != null && (
+                    <p className="text-xs text-muted-foreground">{dinnerRecipe.nutrition_per_serving.kcal} kcal</p>
+                  )}
+                </div>
+              </div>
+            )}
+            <DailyNutritionSummary meals={todayPlan.meal_plan} goal={goal} />
+          </CollapsibleSection>
+        </div>
+      )}
 
-      <Separator className="my-6" />
+      {/* 6. フィードバック履歴 (デフォルト折り畳み) */}
+      <div className="mb-4">
+        <CollapsibleSection title="フィードバック履歴" defaultOpen={false}>
+          <FeedbackHistory items={feedbackHistory} isLoading={historyLoading} />
+        </CollapsibleSection>
+      </div>
 
-      {/* Feedback Section */}
-      <section className="space-y-4">
-        <FeedbackForm
-          onSubmit={handleFeedback}
-          isLoading={feedbackLoading}
-          enableMealFeedback={Boolean(dinnerRecipe)}
-          workoutOptions={workoutFeedbackOptions}
-        />
-        <FeedbackHistory items={feedbackHistory} isLoading={historyLoading} />
-      </section>
+      {/* スティッキー保存ボタン (フィッツの法則) */}
+      <div className="fixed bottom-16 left-0 right-0 z-30 sm:bottom-0">
+        <div className="mx-auto max-w-3xl px-4 pb-3 pt-2 sm:px-6 sm:pb-4">
+          <Button
+            onClick={handleSave}
+            disabled={saving || !todayPlan}
+            className={cn(
+              'w-full shadow-lg transition-all duration-200',
+              saved && 'bg-success hover:bg-success text-success-foreground',
+              hasUnsaved && !saved && 'ring-2 ring-primary ring-offset-1'
+            )}
+          >
+            {saving ? (
+              <><InlineSpinner /> 保存中...</>
+            ) : saved ? (
+              <><Check className="mr-2 h-4 w-4" /> 保存しました</>
+            ) : (
+              <>
+                {hasUnsaved && <span className="mr-2 h-2 w-2 rounded-full bg-primary-foreground inline-block" />}
+                記録する
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
